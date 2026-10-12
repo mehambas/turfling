@@ -28,7 +28,7 @@
   let viewHtml = '';
   let seenGoals = null;
   const flags = new Set();
-  const ui = { sheet: false, scorersOpen: false, tab: 'mac' };
+  const ui = { sheet: false, scorersOpen: false, rulesOpen: false, tab: 'mac' };
   const V = Views.create(() => state);
   const showSheet = Views.sheetView(sheet, {
     returnFocus: '[data-action="screen-fixtures"]',
@@ -137,7 +137,7 @@
   }
 
   function renderSheet() {
-    if (!showSheet(ui.sheet ? V.renderSheet({ scorersOpen: ui.scorersOpen }) : '')) ui.sheet = false;
+    if (!showSheet(ui.sheet ? V.renderSheet({ scorersOpen: ui.scorersOpen, rulesOpen: ui.rulesOpen }) : '')) ui.sheet = false;
   }
 
   function closeSheet() {
@@ -168,7 +168,7 @@
   function renderTabs(opts) {
     if (!nav) buildShell();
     fill(nav.roots.mac.querySelector('.iz-page-body'), V.renderWatch(opts));
-    fill(nav.roots.fikstur.querySelector('.iz-scroll'), V.renderFixturePage());
+    fill(nav.roots.fikstur.querySelector('.iz-scroll'), V.renderFixturePage({ rulesOpen: ui.rulesOpen }));
     fill(nav.roots.puan.querySelector('.iz-scroll'), V.renderStandingsPage());
     for (const [tab, teamId] of Object.entries(teams)) {
       if (!V.team(teamId)) {
@@ -367,6 +367,9 @@
     'scorers-toggle'() {
       ui.scorersOpen = !ui.scorersOpen;
       render();
+    },
+    'rules-toggle'(el) {
+      ui.rulesOpen = Views.toggleRules(el);
     },
     'toggle-fullscreen'() {
       if (document.fullscreenElement) document.exitFullscreen();

@@ -169,6 +169,15 @@ body.is-watch {
   padding-top: 28px;
 }
 
+.iz-main.is-pre {
+  gap: 28px;
+  padding-bottom: 32px;
+}
+
+.iz-main.is-pre .iz-rules {
+  align-self: stretch;
+}
+
 .iz-kicker {
   padding: 0 4px 4px;
   font-family: var(--font-cond);

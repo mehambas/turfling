@@ -67,6 +67,7 @@
     copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
     share: svg('<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4M12 2v13"/>'),
     lock: svg('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    help: svg('<circle cx="12" cy="12" r="9.5"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.7-2.8 2.7"/><path d="M12 17h.01"/>'),
   };
 
   const TV_LINES =
@@ -100,6 +101,33 @@
   }
 
   const goalMinute = (g) => (g.ms == null ? '' : `${Math.floor(g.ms / MINUTE) + 1}'`);
+
+  const TIMES = { 1: 'bir', 2: 'iki', 3: 'üç' };
+
+  function rulesText(s) {
+    const po = !!s.playoffEnabled;
+    const r = s.leagueRounds;
+    const steps = [{ key: 'league', name: 'Lig', min: s.leagueMin, who: `Herkes herkesle ${TIMES[r] || r} kez oynar` }];
+    if (po) steps.push({ key: 'playoff', name: 'Playoff', min: s.playoffMin, who: 'Lig 2.si – 3.sü' });
+    steps.push({ key: 'final', name: 'Final', min: s.finalMin, who: po ? 'Lig 1.si – playoff galibi' : 'Lig 1.si – 2.si' });
+    return {
+      steps,
+      summary: steps.map((x) => x.name).join(' › '),
+      meta: `${r > 1 ? `${r} devre, ` : ''}${r * 3} maç · her maçta bir takım dinlenir`,
+      draw: `Ligde öyle kalır; ${po ? 'playoff ve finalde' : 'finalde'} penaltı.`,
+      tvLine: `Galibiyet 3, beraberlik 1, mağlubiyet 0 puan · ${po ? 'Playoff ve finalde' : 'Finalde'} beraberlikte penaltı`,
+    };
+  }
+
+  // Kutu yerinde açılıp kapanır: yeniden çizim geçişi yarıda keserdi. Sonraki çizim aynı hâli zaten üretir.
+  function toggleRules(btn) {
+    const box = btn.closest('.iz-rules');
+    const open = !box.classList.contains('is-open');
+    box.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    box.querySelector('.iz-rules-body').inert = !open;
+    return open;
+  }
 
   let wakeLock = null;
   let wakePending = false;
@@ -279,9 +307,14 @@
       const groups = [];
       const rounds = Math.max(0, ...st.matches.map((m) => m.round || 0));
       for (let r = 1; r <= rounds; r++) {
-        groups.push({ title: `Lig · ${r}. devre`, matches: st.matches.filter((m) => m.stage === 'league' && m.round === r) });
+        groups.push({ title: rounds > 1 ? `Lig · ${r}. devre` : 'Lig', matches: st.matches.filter((m) => m.stage === 'league' && m.round === r) });
       }
-      groups.push({ title: 'Eleme', matches: st.matches.filter((m) => m.stage !== 'league') });
+      for (const [stage, title] of [
+        ['playoff', 'Playoff'],
+        ['final', 'Final'],
+      ]) {
+        groups.push({ title, matches: st.matches.filter((m) => m.stage === stage) });
+      }
       return groups;
     }
 
@@ -370,11 +403,17 @@
     }
 
     function screenIdle() {
+      const r = rulesText(getState().settings);
       return `<div class="tv-center">
       <span class="tv-kicker">Hoş geldiniz</span>
       <div class="tv-big">${esc(tournamentName())}</div>
       <span class="tv-sub">Turnuva henüz başlamadı</span>
-    </div>`;
+    </div>
+    <section class="tv-rules" aria-labelledby="tv-rules-h">
+      <h2 class="tv-rules-h" id="tv-rules-h">Nasıl oynanıyor?</h2>
+      ${rulesFlow(r)}
+      <p class="tv-rules-line">${r.tvLine}</p>
+    </section>`;
     }
 
     function screenNext(m, est) {
@@ -419,7 +458,8 @@
       if (!state) {
         body = watchHero(...(WATCH_NOTICES[notice] || WATCH_NOTICES.connecting));
       } else if (!state.started) {
-        body = watchHero('Hoş geldiniz', esc(tournamentName()), 'Turnuva henüz başlamadı');
+        body = watchHero('Hoş geldiniz', esc(tournamentName()), 'Turnuva henüz başlamadı') + watchRules({ fixed: true });
+        layout = ' is-center is-pre';
       } else if (liveMatch()) {
         pill = '<span class="tag-live">Canlı</span>';
         body = watchLive(liveMatch(), flags);
@@ -532,7 +572,7 @@
       </div>`;
     }
 
-    function renderSheet({ scorersOpen = false } = {}) {
+    function renderSheet({ scorersOpen = false, rulesOpen = false } = {}) {
       const state = getState();
       if (!state?.started) return '';
       const live = liveMatch();
@@ -548,8 +588,43 @@
           <h2 id="iz-sheet-title">Fikstür ve puan</h2>
           <button class="iz-close" data-action="sheet-close" aria-label="Kapat" autofocus>${ICONS.x}</button>
         </div>
-        <div class="iz-sheet-top">${renderStandings()}${watchScorers(scorersOpen)}</div>
+        <div class="iz-sheet-top">${renderStandings()}<div class="iz-sheet-side">${watchScorers(scorersOpen)}${watchRules({ open: rulesOpen, light: true })}</div></div>
         ${watchFixtures()}
+      </section>`;
+    }
+
+    function rulesFlow(r) {
+      const steps = r.steps.map(
+        (x, i) => `${i ? `<li class="iz-flow-arrow" aria-hidden="true">${ICONS.forward}</li>` : ''}<li class="iz-step">
+          <span class="iz-step-name">${x.name}${x.key === 'final' ? ICONS.trophy : ''}</span>
+          <span class="iz-step-min">${x.min}<small>dk</small></span>
+          <span class="iz-step-who">${x.who}</span>
+        </li>`,
+      );
+      return `<ol class="iz-flow" aria-label="Turnuva akışı">${steps.join('')}</ol>`;
+    }
+
+    function watchRules({ open = false, light = false, fixed = false } = {}) {
+      const r = rulesText(getState().settings);
+      const sep = ' <i aria-hidden="true">›</i> ';
+      const content = `<div class="iz-rules-body" id="iz-rules-${light ? 'tv' : 'body'}"${open || fixed ? '' : ' inert'}><div class="iz-rules-in"><div class="iz-rules-pad">
+        ${rulesFlow(r)}
+        <p class="iz-flow-meta">${r.meta}</p>
+        <dl class="iz-rules-dl">
+          <div><dt>Puan</dt><dd class="iz-rules-pts"><span><b>3</b>galibiyet</span><span><b>1</b>beraberlik</span><span><b>0</b>mağlubiyet</span></dd></div>
+          <div><dt>Beraberlik</dt><dd>${r.draw}</dd></div>
+          <div><dt>Puan eşitse</dt><dd>${['Averaj', 'atılan gol', 'aralarındaki maç', 'penaltı ya da yazı-tura'].join(sep)}</dd></div>
+        </dl>
+      </div></div></div>`;
+      const label = `<span class="iz-rules-label">${light ? '' : ICONS.help}Nasıl oynanıyor?</span>`;
+      if (fixed) {
+        return `<section class="iz-rules is-open" aria-labelledby="iz-rules-h"><h2 class="iz-rules-head" id="iz-rules-h">${label}</h2>${content}</section>`;
+      }
+      return `<section class="iz-rules${open ? ' is-open' : ''}${light ? ' is-light' : ''}">
+        <button class="iz-rules-btn" data-action="rules-toggle" aria-expanded="${open}" aria-controls="iz-rules-${light ? 'tv' : 'body'}">
+          ${label}<span class="iz-rules-lead">${r.summary}${ICONS.chevron}</span>
+        </button>
+        ${content}
       </section>`;
     }
 
@@ -654,11 +729,11 @@
       return `<h1 class="iz-large">${title}</h1><p class="iz-large-sub">${sub}</p>`;
     }
 
-    function renderFixturePage() {
+    function renderFixturePage({ rulesOpen = false } = {}) {
       const state = getState();
       const n = T.activeMatches(state).length;
       const sub = T.champion(state) ? `Turnuva bitti · ${n} maç` : `${n} maç · tahmini bitiş ${fmtTime(T.schedule(state).estEnd)}`;
-      return `${pageHead('Fikstür', sub)}<div class="iz-stack">${watchFixtures({ links: true })}</div>`;
+      return `${pageHead('Fikstür', sub)}<div class="iz-stack">${watchRules({ open: rulesOpen })}${watchFixtures({ links: true })}</div>`;
     }
 
     function renderStandingsPage() {
@@ -845,5 +920,5 @@
     };
   }
 
-  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, keepAwake, sheetView, create };
+  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, rulesText, toggleRules, keepAwake, sheetView, create };
 });

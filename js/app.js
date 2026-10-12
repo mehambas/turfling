@@ -32,6 +32,7 @@
     moveMenu: null,
     sheet: false,
     scorersOpen: false,
+    rulesOpen: false,
   };
   const dialog = { kind: null, opts: null, resolve: null, matchId: null, pens: { home: '', away: '' }, error: '' };
   let viewHtml = '';
@@ -204,6 +205,7 @@
     'screen-fixtures',
     'sheet-close',
     'scorers-toggle',
+    'rules-toggle',
     'scroll-to',
     'fixture-filter',
     'export',
@@ -1031,7 +1033,7 @@
 
   function renderSheet() {
     const open = ui.sheet && isScreen();
-    if (!showSheet(open ? V.renderSheet({ scorersOpen: ui.scorersOpen }) : '')) ui.sheet = false;
+    if (!showSheet(open ? V.renderSheet({ scorersOpen: ui.scorersOpen, rulesOpen: ui.rulesOpen }) : '')) ui.sheet = false;
   }
 
   function closeSheet() {
@@ -1328,6 +1330,10 @@
     'scorers-toggle'() {
       ui.scorersOpen = !ui.scorersOpen;
       renderSheet();
+    },
+
+    'rules-toggle'(el) {
+      ui.rulesOpen = Views.toggleRules(el);
     },
 
     'scroll-to'(el) {

@@ -55,6 +55,47 @@ test('izleyici: turnuva başlamadan bekleme ekranı, fikstür düğmesi yok', ()
   assert.equal(V.renderSheet({}), '');
 });
 
+test('izleyici başlamadan önce: kurallar hep açık, telefonda ve TV ekranında', () => {
+  const s = T.createState();
+  s.settings.leagueMin = 10;
+  const V = viewer(s);
+  const phone = V.renderWatch();
+  assert.match(phone, /<section class="iz-rules is-open" aria-labelledby="iz-rules-h"><h2 class="iz-rules-head" id="iz-rules-h">/);
+  assert.match(phone, /Herkes herkesle iki kez oynar/);
+  assert.match(phone, /Lig<\/span>\s*<span class="iz-step-min">10<small>dk/);
+  assert.doesNotMatch(phone, /inert/);
+
+  const tv = V.renderWatch({ wide: true });
+  assert.match(tv, /<section class="tv-rules"[\s\S]*iz-step-name">Lig<[\s\S]*iz-step-name">Playoff<[\s\S]*iz-step-name">Final/);
+  assert.match(tv, /Galibiyet 3, beraberlik 1, mağlubiyet 0 puan · Playoff ve finalde beraberlikte penaltı/);
+  assert.deepEqual([...actionsIn(tv)], ['toggle-fullscreen']);
+});
+
+test('kural metni ayarlara göre: devre sayısı, playoff, süreler', () => {
+  const base = T.createState().settings;
+  const def = Views.rulesText(base);
+  assert.equal(def.summary, 'Lig › Playoff › Final');
+  assert.deepEqual(
+    def.steps.map((x) => `${x.name} ${x.min} ${x.who}`),
+    ['Lig 12 Herkes herkesle iki kez oynar', 'Playoff 10 Lig 2.si – 3.sü', 'Final 15 Lig 1.si – playoff\u00a0galibi'],
+  );
+  assert.equal(def.meta, '2 devre, 6 maç · her maçta bir takım dinlenir');
+  assert.equal(def.draw, 'Ligde öyle kalır; playoff ve finalde penaltı.');
+
+  const one = Views.rulesText({ ...base, leagueRounds: 1, playoffEnabled: false, finalMin: 20 });
+  assert.equal(one.summary, 'Lig › Final');
+  assert.equal(one.meta, '3 maç · her maçta bir takım dinlenir');
+  assert.doesNotMatch(one.meta, /devre/);
+  assert.equal(one.steps[0].who, 'Herkes herkesle bir kez oynar');
+  assert.deepEqual([one.steps[1].min, one.steps[1].who], [20, 'Lig 1.si – 2.si']);
+  assert.equal(one.draw, 'Ligde öyle kalır; finalde penaltı.');
+  assert.match(one.tvLine, /· Finalde beraberlikte penaltı$/);
+
+  const three = Views.rulesText({ ...base, leagueRounds: 3 });
+  assert.equal(three.steps[0].who, 'Herkes herkesle üç kez oynar');
+  assert.equal(three.meta, '3 devre, 9 maç · her maçta bir takım dinlenir');
+});
+
 test('izleyici: yayın yoksa ya da link hatalıysa bilgi ekranı', () => {
   const V = viewer(null);
   assert.match(V.renderWatch({ notice: 'connecting' }), /Bağlanıyor…/);
@@ -135,22 +176,29 @@ test('fikstür ve puan penceresi: puan durumu, gol krallığı, fikstür; deği�
   assert.match(closed, /aria-expanded="false"/);
   assert.match(closed, /<ol class="iz-kings-list" id="iz-kings-list" hidden>/);
   assert.match(closed, new RegExp(`${playerName(s, first, 'home')}</span></span><strong>2 gol`));
-  assert.match(closed, /Lig · 1\. devre[\s\S]*Lig · 2\. devre[\s\S]*Eleme/);
+  assert.deepEqual([...closed.matchAll(/class="iz-fx-title">([^<]+)</g)].map((m) => m[1]), ['Lig · 1. devre', 'Lig · 2. devre', 'Playoff', 'Final']);
+  assert.match(closed, /<section class="iz-rules is-light">\s*<button class="iz-rules-btn" data-action="rules-toggle" aria-expanded="false"/);
+  assert.match(closed, /id="iz-rules-tv" inert/);
   assert.match(closed, /iz-fx-row is-live">\s*<span class="iz-fx-time"><span class="tag-live">Canlı<\/span>/);
   assert.match(closed, /Lig 2\.si/);
   assert.doesNotMatch(closed, /~/);
-  assert.deepEqual([...actionsIn(closed)].sort(), ['scorers-toggle', 'sheet-close']);
+  assert.deepEqual([...actionsIn(closed)].sort(), ['rules-toggle', 'scorers-toggle', 'sheet-close']);
 
   const open = V.renderSheet({ scorersOpen: true });
   assert.match(open, /aria-expanded="true"/);
-  assert.equal((open.match(/<li[ >]/g) || []).length, 2, 'yalnız gol atanlar listelenir');
+  const kings = open.match(/<ol class="iz-kings-list"[^>]*>([\s\S]*?)<\/ol>/)[1];
+  assert.equal((kings.match(/<li[ >]/g) || []).length, 2, 'yalnız gol atanlar listelenir');
+
+  const rules = V.renderSheet({ rulesOpen: true });
+  assert.match(rules, /<section class="iz-rules is-open is-light">/);
+  assert.doesNotMatch(rules, /inert/);
 });
 
 test('kimse gol atmadıysa gol krallığı açılmaz', () => {
   const s = setup();
   const html = viewer(s).renderSheet({});
   assert.match(html, /Henüz gol yok/);
-  assert.deepEqual([...actionsIn(html)], ['sheet-close']);
+  assert.deepEqual([...actionsIn(html)], ['sheet-close', 'rules-toggle']);
 });
 
 test('geniş ekranda yayın ekranı: yalnız fikstür ve tam ekran düğmeleri', () => {
@@ -214,11 +262,28 @@ test('Fikstür sekmesi: gruplar kart, takım adları takım sayfasını, canlı 
   const html = viewer(s).renderFixturePage();
   assert.match(html, /<h1 class="iz-large">Fikstür<\/h1>/);
   assert.match(html, /\d+ maç · tahmini bitiş \d\d:\d\d/);
-  assert.equal((html.match(/class="iz-card iz-fx-card"/g) || []).length, 3);
+  assert.deepEqual([...html.matchAll(/<h2 class="iz-card-h">([^<]+)</g)].map((m) => m[1]), ['Lig · 1. devre', 'Lig · 2. devre', 'Playoff', 'Final']);
+  assert.match(html, /<div class="iz-stack"><section class="iz-rules">\s*<button class="iz-rules-btn" data-action="rules-toggle" aria-expanded="false"/);
+  assert.match(html, /<span class="iz-rules-lead">Lig › Playoff › Final/);
+  assert.match(html, /id="iz-rules-body" inert/);
+  assert.match(viewer(s).renderFixturePage({ rulesOpen: true }), /<section class="iz-rules is-open">[\s\S]*aria-expanded="true"/);
   assert.match(html, /<button class="iz-fx-score" data-action="tab" data-tab="mac"/);
   assert.match(html, /data-action="team" data-team="/);
   assert.match(html, /Lig 1\.si/, 'belli olmayan takım düğme değil, yer tutucu');
   assert.doesNotMatch(html, /~/);
+});
+
+test('tek devre, playoff kapalı: fikstürde "Lig" ve "Final", kutuda "Lig › Final"', () => {
+  const s = T.createState();
+  T.addPlayers(s, Array.from({ length: 15 }, (_, i) => `Oyuncu ${i + 1}`));
+  T.applyDraw(s, seeded(1));
+  Object.assign(s.settings, { leagueRounds: 1, playoffEnabled: false });
+  s.matches = T.generateMatches(s.settings);
+  s.started = true;
+  const html = viewer(s).renderFixturePage();
+  assert.deepEqual([...html.matchAll(/<h2 class="iz-card-h">([^<]+)</g)].map((m) => m[1]), ['Lig', 'Final']);
+  assert.match(html, /<span class="iz-rules-lead">Lig › Final/);
+  assert.match(html, /3 maç · her maçta bir takım dinlenir/);
 });
 
 test('Puan sekmesi: satırlar takım sayfasını açar, gol krallığı takım adıyla açık liste', () => {
