@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Halı Saha Turnuvası</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%BD%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span id="brand-title">Halı Saha Turnuvası</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Bölümler">
+      <button class="tab" role="tab" data-action="tab" data-tab="dashboard">Turnuva</button>
+      <button class="tab" role="tab" data-action="tab" data-tab="fixtures">Fikstür</button>
+      <button class="tab" role="tab" data-action="tab" data-tab="setup">Kurulum</button>
+    </nav>
+    <div class="tools">
+      <button class="icon-btn" data-action="toggle-sound"></button>
+      <button class="icon-btn" data-action="toggle-theme"></button>
+      <button class="icon-btn" data-action="toggle-fullscreen"></button>
+    </div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <dialog id="dialog" class="dialog"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
+
+  <script src="js/tournament.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
