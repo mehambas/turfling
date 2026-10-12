@@ -54,6 +54,8 @@
   }
 
   // Yeni gol, golcü seçilene ya da seçim kapanana kadar izleyicilere (yayın ve #ekran) gitmez.
+  // Seçim açık unutulursa en geç HOLD_MS sonra isimsiz gider; isim sonradan da seçilebilir.
+  const HOLD_MS = 30 * 1000;
   let heldGoal = null;
   function markHeld() {
     const id = ui.goalFresh ? ui.goalPicker : null;
@@ -1456,6 +1458,14 @@
         const goal = T.addGoal(m, el.dataset.team, Date.now());
         if (m.status === 'live') Object.assign(ui, { goalPicker: goal.id, goalFresh: true, showAllScorers: false, finishing: false });
       });
+      const held = heldGoal;
+      if (held) {
+        setTimeout(() => {
+          if (heldGoal !== held) return;
+          ui.goalFresh = false;
+          render();
+        }, HOLD_MS);
+      }
     },
 
     'goal-undo'(el) {
