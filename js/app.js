@@ -24,7 +24,6 @@
   const ui = {
     tab: state.started ? 'dashboard' : 'setup',
     goalPicker: null,
-    goalFresh: false,
     showAllScorers: false,
     finishing: false,
     revealDraw: false,
@@ -43,47 +42,14 @@
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = T.migrate(JSON.parse(raw));
-        return isScreen() ? T.withoutHeldGoals(saved) : saved;
-      }
+      if (raw) return T.migrate(JSON.parse(raw));
     } catch (err) {
       console.warn('Kayıt okunamadı', err);
     }
     return T.createState();
   }
 
-  // Yeni gol, golcü seçilene ya da seçim kapanana kadar izleyicilere (yayın ve #ekran) gitmez.
-  // Seçim açık unutulursa en geç HOLD_MS sonra isimsiz gider; isim sonradan da seçilebilir.
-  const HOLD_MS = 30 * 1000;
-  let heldGoal = null;
-  function markHeld() {
-    const id = ui.goalFresh ? ui.goalPicker : null;
-    if (id === heldGoal) return false;
-    for (const m of state.matches) {
-      for (const g of m.goals) {
-        if (g.id === heldGoal) delete g.held;
-        if (g.id === id) g.held = true;
-      }
-    }
-    heldGoal = id;
-    return true;
-  }
-
-  function clearHeld() {
-    let found = false;
-    for (const m of state.matches) {
-      for (const g of m.goals) {
-        if (!g.held) continue;
-        delete g.held;
-        found = true;
-      }
-    }
-    return found;
-  }
-
   function saveState({ sync = true } = {}) {
-    markHeld();
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (err) {
@@ -168,7 +134,6 @@
   function render() {
     applyTheme();
     const screen = isScreen();
-    if (!screen && !readOnly() && markHeld()) saveState();
     document.body.classList.toggle('is-screen', screen);
     document.body.classList.toggle('is-wide', screen && WIDE.matches);
     if (screen) {
@@ -358,9 +323,14 @@
     state = T.migrate(remote);
     T.resolveKnockouts(state);
     saveState({ sync: false });
-    if (dialog.kind === 'edit' && !match(dialog.matchId)) closeDialog(false);
-    if (ui.goalPicker && !liveMatch()?.goals.some((g) => g.id === ui.goalPicker)) ui.goalPicker = null;
+    dropStale();
     render();
+  }
+
+  function dropStale() {
+    if (dialog.kind === 'edit' && !match(dialog.matchId)) closeDialog(false);
+    if (dialog.kind === 'goal' && (readOnly() || match(dialog.matchId)?.status !== 'live')) closeDialog(false);
+    if (ui.goalPicker && !liveMatch()?.goals.some((g) => g.id === ui.goalPicker)) ui.goalPicker = null;
   }
 
   function liveNotice(n) {
@@ -447,15 +417,13 @@
     const away = team(m.away);
     const running = m.runningSince != null;
     const picker = ui.goalPicker ? m.goals.find((g) => g.id === ui.goalPicker) : null;
-    const fresh = picker && ui.goalFresh ? picker.team : null;
-    const digit = (n, t) => `<span${fresh === t.id ? ' class="is-fresh"' : ''}>${n}</span>`;
     return `<section class="pitch-card live-card${picker ? ' has-picker' : ''}" aria-label="Canlı maç">
       ${PITCH_LINES}
       <div class="pc-body">
         ${cardTop(m, '<span class="tag-live">Canlı</span>')}
         <div class="lc-board">
           ${liveTeam(m, home, 'home')}
-          <div class="lc-score" role="img" aria-label="Skor: ${esc(home.name)} ${s.home}, ${esc(away.name)} ${s.away}">${digit(s.home, home)}<span class="lc-dash">–</span>${digit(s.away, away)}</div>
+          <div class="lc-score" role="img" aria-label="Skor: ${esc(home.name)} ${s.home}, ${esc(away.name)} ${s.away}"><span>${s.home}</span><span class="lc-dash">–</span><span>${s.away}</span></div>
           ${liveTeam(m, away, 'away')}
         </div>
         ${m.goals.length ? `<div class="lc-chips lc-chips-all narrow-only">${m.goals.map((g) => goalChip(g, true)).join('')}</div>` : ''}
@@ -529,16 +497,16 @@
           <span class="picker-meta narrow-only">${g.ms == null ? '' : `${Math.floor(g.ms / MINUTE) + 1}. dakika · `}${s.home}–${s.away}</span>
           <h2 id="picker-title"><span class="picker-soft wide-only">${min ? `${min} · ` : ''}</span><span class="sw narrow-only"></span><span class="picker-team">${esc(t.name)} golü</span><span class="picker-soft wide-only">&nbsp;— kim attı?</span></h2>
         </div>
-        <button class="pk-remove wide-only" data-action="goal-remove" data-goal="${g.id}">${ICONS.undo}${ui.goalFresh ? 'Yanlışlıkla mı? Geri al' : 'Golü sil'}</button>
+        <button class="pk-remove wide-only" data-action="goal-remove" data-goal="${g.id}">${ICONS.trash}Golü sil</button>
         <button class="pk-close narrow-only" data-action="picker-close" aria-label="Kapat">${ICONS.x}</button>
       </div>
       <span class="picker-label narrow-only">Golü atan</span>
       <div class="pk-players" role="group" aria-label="Golü atan">
         ${own.map(chip).join('')}${more}
-        <button class="pk-later wide-only" data-action="picker-close">${g.playerId ? 'Kapat' : 'Sonra seç'}</button>
+        <button class="pk-later wide-only" data-action="picker-close">Kapat</button>
       </div>
       <div class="pk-foot narrow-only">
-        <button class="pk-delete" data-action="goal-remove" data-goal="${g.id}">${ui.goalFresh ? `${ICONS.undo}Geri al` : `${ICONS.trash}Golü sil`}</button>
+        <button class="pk-delete" data-action="goal-remove" data-goal="${g.id}">${ICONS.trash}Golü sil</button>
         <button class="btn btn-primary btn-lg" data-action="picker-close">Tamam</button>
       </div>
     </section>`;
@@ -1063,7 +1031,7 @@
       el.innerHTML = '';
       return;
     }
-    el.innerHTML = dialog.kind === 'confirm' ? confirmHtml() : editHtml();
+    el.innerHTML = dialog.kind === 'confirm' ? confirmHtml() : dialog.kind === 'goal' ? goalHtml() : editHtml();
     if (!el.open) el.showModal();
   }
 
@@ -1076,6 +1044,32 @@
         <button class="btn" data-action="dialog-cancel">${esc(o.cancel || 'Vazgeç')}</button>
         <button class="btn ${o.danger ? 'btn-danger' : 'btn-primary'}" data-action="dialog-ok">${esc(o.ok || 'Tamam')}</button>
       </div>
+    </div>`;
+  }
+
+  function goalHtml() {
+    const m = match(dialog.matchId);
+    const t = team(dialog.opts.team);
+    const s = T.score(m);
+    const chip = (p) => `<button class="pk-player" data-action="goal-confirm" data-player="${p.id}"><span class="tn-name">${esc(p.name)}</span></button>`;
+    const own = t.playerIds.map(player).filter(Boolean);
+    const others = state.players.filter((p) => !t.playerIds.includes(p.id));
+    const more = ui.showAllScorers
+      ? others.map(chip).join('')
+      : others.length
+        ? '<button class="pk-player pk-more" data-action="scorer-more">Diğer…</button>'
+        : '';
+    return `<div class="dialog-body goal-dialog" style="${teamStyle(t)}">
+      <div>
+        <span class="gd-meta">${goalMinute(dialog.opts)} · ${s.home}–${s.away}</span>
+        <h2><span class="sw"></span>${esc(t.name)} golü</h2>
+      </div>
+      <span class="gd-label">Kim attı?</span>
+      <div class="pk-players" role="group" aria-label="Golü atan">
+        ${own.map(chip).join('')}${more}
+        <button class="pk-player gd-unknown" data-action="goal-confirm" data-player="">Bilinmiyor</button>
+      </div>
+      <div class="dialog-actions"><button class="btn" data-action="dialog-cancel">Vazgeç</button></div>
     </div>`;
   }
 
@@ -1454,18 +1448,23 @@
     'goal-add'(el) {
       const m = match(el.dataset.match) || liveMatch();
       if (!m) return;
+      if (m.status !== 'live') return commit(() => T.addGoal(m, el.dataset.team, Date.now()));
+      // Gol ancak golcü (ya da "Bilinmiyor") seçilince kaydedilir; yanlışlıkla basılan "+ Gol" iz bırakmaz.
+      Object.assign(ui, { goalPicker: null, showAllScorers: false, finishing: false });
+      Object.assign(dialog, { kind: 'goal', matchId: m.id, opts: { team: el.dataset.team, ms: T.elapsedMs(m) } });
+      render();
+    },
+
+    'goal-confirm'(el) {
+      const m = match(dialog.matchId);
+      const { team: teamId, ms } = dialog.opts;
+      closeDialog(false);
+      if (m?.status !== 'live') return;
       commit(() => {
-        const goal = T.addGoal(m, el.dataset.team, Date.now());
-        if (m.status === 'live') Object.assign(ui, { goalPicker: goal.id, goalFresh: true, showAllScorers: false, finishing: false });
+        const g = T.addGoal(m, teamId, Date.now());
+        g.ms = ms;
+        g.playerId = el.dataset.player || null;
       });
-      const held = heldGoal;
-      if (held) {
-        setTimeout(() => {
-          if (heldGoal !== held) return;
-          ui.goalFresh = false;
-          render();
-        }, HOLD_MS);
-      }
     },
 
     'goal-undo'(el) {
@@ -1500,7 +1499,7 @@
 
     'scorer-edit'(el) {
       const same = ui.goalPicker === el.dataset.goal;
-      Object.assign(ui, { goalPicker: same ? null : el.dataset.goal, goalFresh: false, showAllScorers: false });
+      Object.assign(ui, { goalPicker: same ? null : el.dataset.goal, showAllScorers: false });
       render();
     },
 
@@ -1839,7 +1838,6 @@
     const ok = await confirmDialog({ title: 'Yedek yüklensin mi?', body: 'Mevcut turnuva verileri bu yedekle değiştirilecek.', ok: 'Yükle', danger: true });
     if (!ok) return;
     state = T.migrate(data);
-    clearHeld();
     T.resolveKnockouts(state);
     Object.assign(ui, { tab: state.started ? 'dashboard' : 'setup', finishing: false, goalPicker: null });
     saveState();
@@ -1869,15 +1867,13 @@
   window.addEventListener('storage', (e) => {
     if (e.key !== STORAGE_KEY) return;
     state = loadState();
-    if (dialog.kind === 'edit' && !match(dialog.matchId)) closeDialog(false);
-    if (ui.goalPicker && !liveMatch()?.goals.some((g) => g.id === ui.goalPicker)) ui.goalPicker = null;
+    dropStale();
     render();
   });
 
   window.addEventListener('hashchange', () => {
     if (LiveSync.parseAdminHash(location.hash)) return handleAdminHash();
     ui.sheet = false;
-    state = loadState();
     render();
   });
 
@@ -1925,10 +1921,8 @@
   $('.tool-screen').innerHTML = ICONS.tv;
   T.resolveKnockouts(state);
   if (liveAvailable() && !isScreen()) {
-    live = LiveSync.admin({ getState: () => T.withoutHeldGoals(state), onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
+    live = LiveSync.admin({ getState: () => state, onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
   }
-  // Sayfa gol seçimi açıkken kapandıysa o gol şimdi yayına gitsin.
-  if (!isScreen() && clearHeld()) saveState();
   if (liveAvailable() && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   render();
   handleAdminHash();

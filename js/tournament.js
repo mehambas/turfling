@@ -228,12 +228,6 @@
     m.goals = m.goals.filter((g) => g.id !== goalId);
   }
 
-  function withoutHeldGoals(state) {
-    const held = (m) => m.goals.some((g) => g.held);
-    if (!state.matches.some(held)) return state;
-    return { ...state, matches: state.matches.map((m) => (held(m) ? { ...m, goals: m.goals.filter((g) => !g.held) } : m)) };
-  }
-
   function score(m) {
     let home = 0;
     let away = 0;
@@ -511,7 +505,6 @@
     addGoal,
     undoGoal,
     removeGoal,
-    withoutHeldGoals,
     score,
     winnerOf,
     computeStandings,

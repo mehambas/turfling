@@ -247,18 +247,3 @@ test('yedek: bozuk veri reddedilir, eksik ayarlar varsayılanla tamamlanır', ()
   assert.equal(s.settings.leagueMin, 9);
   assert.equal(s.settings.finalMin, 15);
 });
-
-test('golcü seçimi bekleyen gol izleyiciye giden hâlden çıkarılır, asıl kayıt değişmez', () => {
-  const s = T.createState();
-  s.matches = T.generateMatches(s.settings);
-  const m = s.matches[0];
-  T.startMatch(s, m, Date.now());
-  T.addGoal(m, m.home);
-  assert.equal(T.withoutHeldGoals(s), s, 'bekleyen gol yoksa aynı nesne');
-  const held = T.addGoal(m, m.away);
-  held.held = true;
-  const pub = T.withoutHeldGoals(s);
-  assert.deepEqual(T.score(pub.matches[0]), { home: 1, away: 0 });
-  assert.deepEqual(T.score(m), { home: 1, away: 1 });
-  assert.equal(pub.matches[1], s.matches[1]);
-});

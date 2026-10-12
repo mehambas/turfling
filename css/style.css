@@ -848,10 +848,6 @@ p {
   font-weight: 500;
 }
 
-.lc-score .is-fresh {
-  color: var(--lime);
-}
-
 .lc-play {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -2681,6 +2677,59 @@ p {
   justify-content: flex-end;
   gap: 8px;
   padding-top: 4px;
+}
+
+.goal-dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.goal-dialog h2 .sw {
+  width: 14px;
+  height: 14px;
+}
+
+.gd-meta,
+.gd-label {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.gd-label {
+  margin-bottom: -6px;
+  font-weight: 600;
+}
+
+.goal-dialog .pk-players {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.goal-dialog .pk-player {
+  height: 52px;
+  padding: 0 8px;
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--ink);
+}
+
+.goal-dialog .pk-player:hover {
+  background: var(--pitch-soft);
+}
+
+.goal-dialog .pk-more {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ring);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.goal-dialog .gd-unknown {
+  border: 1.5px dashed var(--faint);
+  background: transparent;
+  color: var(--ink-2);
 }
 
 .edit-score {
