@@ -2148,6 +2148,7 @@
   if (liveAvailable() && !isScreen()) {
     live = LiveSync.admin({ getState: () => state, onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
   }
+  if (liveAvailable() && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   render();
   handleAdminHash();
   setInterval(tick, 250);

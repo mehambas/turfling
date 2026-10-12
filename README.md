@@ -38,7 +38,7 @@ Lisans: SIL Open Font License 1.1 (`fonts/OFL.txt`).
 ## Testler
 
 ```sh
-node --test tests/tournament.test.js
+node --test tests/*.test.js
 ```
 
 ## Yayınlama (isteğe bağlı)
