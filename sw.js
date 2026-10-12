@@ -3,14 +3,18 @@
 const CACHE = 'halisaha';
 const NETWORK_TIMEOUT_MS = 3000;
 
-// "/index.html" Workers'ta "/" adresine yönlendirilir; yönlendirilmiş bir cevap sayfa açılışında
-// kullanılamadığı için yalnız "/" saklanır.
+// "/index.html" ve "/izle.html" Workers'ta "/" ve "/izle" adreslerine yönlendirilir; yönlendirilmiş
+// bir cevap sayfa açılışında kullanılamadığı için yalnız yönlendirilen adresler saklanır.
 const ASSETS = [
   '/',
+  '/izle',
   '/css/style.css',
+  '/css/izle.css',
   '/js/tournament.js',
   '/js/sync.js',
+  '/js/views.js',
   '/js/app.js',
+  '/js/izle.js',
   '/fonts/fonts.css',
   '/fonts/barlow-condensed-latin-500-normal.woff2',
   '/fonts/barlow-condensed-latin-600-normal.woff2',

@@ -247,6 +247,15 @@ describe('statik dosyalar', () => {
     assert.equal((await fetch(`${base}/fonts/fonts.css`)).status, 200);
   });
 
+  test('izleyici sayfası /izle adresinden açılır', async () => {
+    const res = await fetch(`${base}/izle`);
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /<script src="js\/izle\.js"><\/script>/);
+    const html = await fetch(`${base}/izle.html`, { redirect: 'manual' });
+    assert.ok([301, 307, 308].includes(html.status), String(html.status));
+    assert.equal(new URL(html.headers.get('location'), base).pathname, '/izle');
+  });
+
   test('worker, testler ve depo dosyaları sunulmaz', async () => {
     for (const path of ['/worker/src/index.js', '/worker/wrangler.toml', '/tests/tournament.test.js', '/README.md', '/.git/config', '/.gitignore', '/.assetsignore']) {
       assert.equal((await fetch(base + path)).status, 404, path);
