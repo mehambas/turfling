@@ -261,7 +261,7 @@ body.is-watch {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  animation: iz-goal-pop 0.4s cubic-bezier(0.3, 1.6, 0.5, 1), iz-goal-ring 1.4s ease-out 0.4s 3;
+  animation: iz-goal-pop 0.4s cubic-bezier(0.3, 1.6, 0.5, 1), iz-goal-blink 0.5s ease-in-out 0.4s infinite alternate;
 }
 
 .iz-goal-flag svg {
@@ -276,12 +276,9 @@ body.is-watch {
   }
 }
 
-@keyframes iz-goal-ring {
-  from {
-    box-shadow: 0 0 0 0 rgb(183 243 74 / 0.6);
-  }
+@keyframes iz-goal-blink {
   to {
-    box-shadow: 0 0 0 12px rgb(183 243 74 / 0);
+    opacity: 0.2;
   }
 }
 

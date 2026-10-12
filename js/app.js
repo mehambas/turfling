@@ -15,6 +15,8 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+  const isScreen = () => location.hash === '#ekran';
+
   let storageWarned = false;
   let state = loadState();
   let live = null;
@@ -36,20 +38,50 @@
   let viewHtml = '';
   let sideHtml = '';
 
-  const isScreen = () => location.hash === '#ekran';
   const WIDE = matchMedia(Views.WIDE_QUERY);
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return T.migrate(JSON.parse(raw));
+      if (raw) {
+        const saved = T.migrate(JSON.parse(raw));
+        return isScreen() ? T.withoutHeldGoals(saved) : saved;
+      }
     } catch (err) {
       console.warn('Kayıt okunamadı', err);
     }
     return T.createState();
   }
 
+  // Yeni gol, golcü seçilene ya da seçim kapanana kadar izleyicilere (yayın ve #ekran) gitmez.
+  let heldGoal = null;
+  function markHeld() {
+    const id = ui.goalFresh ? ui.goalPicker : null;
+    if (id === heldGoal) return false;
+    for (const m of state.matches) {
+      for (const g of m.goals) {
+        if (g.id === heldGoal) delete g.held;
+        if (g.id === id) g.held = true;
+      }
+    }
+    heldGoal = id;
+    return true;
+  }
+
+  function clearHeld() {
+    let found = false;
+    for (const m of state.matches) {
+      for (const g of m.goals) {
+        if (!g.held) continue;
+        delete g.held;
+        found = true;
+      }
+    }
+    return found;
+  }
+
   function saveState({ sync = true } = {}) {
+    markHeld();
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (err) {
@@ -134,6 +166,7 @@
   function render() {
     applyTheme();
     const screen = isScreen();
+    if (!screen && !readOnly() && markHeld()) saveState();
     document.body.classList.toggle('is-screen', screen);
     document.body.classList.toggle('is-wide', screen && WIDE.matches);
     if (screen) {
@@ -1419,10 +1452,10 @@
     'goal-add'(el) {
       const m = match(el.dataset.match) || liveMatch();
       if (!m) return;
-      let goal;
-      commit(() => (goal = T.addGoal(m, el.dataset.team, Date.now())), { rerender: false });
-      if (m.status === 'live') Object.assign(ui, { goalPicker: goal.id, goalFresh: true, showAllScorers: false, finishing: false });
-      render();
+      commit(() => {
+        const goal = T.addGoal(m, el.dataset.team, Date.now());
+        if (m.status === 'live') Object.assign(ui, { goalPicker: goal.id, goalFresh: true, showAllScorers: false, finishing: false });
+      });
     },
 
     'goal-undo'(el) {
@@ -1796,6 +1829,7 @@
     const ok = await confirmDialog({ title: 'Yedek yüklensin mi?', body: 'Mevcut turnuva verileri bu yedekle değiştirilecek.', ok: 'Yükle', danger: true });
     if (!ok) return;
     state = T.migrate(data);
+    clearHeld();
     T.resolveKnockouts(state);
     Object.assign(ui, { tab: state.started ? 'dashboard' : 'setup', finishing: false, goalPicker: null });
     saveState();
@@ -1833,6 +1867,7 @@
   window.addEventListener('hashchange', () => {
     if (LiveSync.parseAdminHash(location.hash)) return handleAdminHash();
     ui.sheet = false;
+    state = loadState();
     render();
   });
 
@@ -1880,8 +1915,10 @@
   $('.tool-screen').innerHTML = ICONS.tv;
   T.resolveKnockouts(state);
   if (liveAvailable() && !isScreen()) {
-    live = LiveSync.admin({ getState: () => state, onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
+    live = LiveSync.admin({ getState: () => T.withoutHeldGoals(state), onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
   }
+  // Sayfa gol seçimi açıkken kapandıysa o gol şimdi yayına gitsin.
+  if (!isScreen() && clearHeld()) saveState();
   if (liveAvailable() && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   render();
   handleAdminHash();

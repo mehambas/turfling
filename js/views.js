@@ -7,7 +7,6 @@
   const MINUTE = T.MINUTE;
   const DEFAULT_NAME = 'Halı Saha Turnuvası';
   const RING_LENGTH = 2 * Math.PI * 88;
-  const GOAL_FLAG_MS = MINUTE;
   const WIDE_QUERY = '(min-width: 761px) and (min-height: 500px) and (orientation: landscape)';
 
   const COLORS = {
@@ -356,7 +355,7 @@
     const AWAY_TEXT = 'Organizatörün cihazı bağlı değil, skor gecikebilir';
 
     // İzleyici sayfası: geniş ekranda yayın ekranı, telefonda alt alta düzen.
-    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false } = {}) {
+    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false, flags = new Set() } = {}) {
       const state = getState();
       const away = !updating && organizerAway && !!state?.started && !T.champion(state);
       if (wide) {
@@ -374,7 +373,7 @@
         body = watchHero('Hoş geldiniz', esc(tournamentName()), 'Turnuva henüz başlamadı');
       } else if (liveMatch()) {
         pill = '<span class="tag-live">Canlı</span>';
-        body = watchLive(liveMatch());
+        body = watchLive(liveMatch(), flags);
         layout = '';
       } else if (T.champion(state)) {
         pill = '<span class="iz-pill">Turnuva bitti</span>';
@@ -408,15 +407,9 @@
       return `${matchTitle(m)} · Lig${getState().settings.leagueRounds > 1 ? ` ${m.round}. devre` : ''}`;
     }
 
-    // Alındığı an değil maç süresi esas: her cihazda aynı, sayfa yeniden açılınca da doğru.
-    function scoredJustNow(m, teamId) {
-      const times = m.goals.filter((g) => g.team === teamId && g.ms != null).map((g) => g.ms);
-      return times.length > 0 && T.elapsedMs(m) - Math.max(...times) < GOAL_FLAG_MS;
-    }
-
-    function watchTeam(m, side) {
+    function watchTeam(m, side, flags) {
       const t = team(m[side]);
-      const flag = scoredJustNow(m, t.id) ? `<span class="iz-goal-flag">${ICONS.ball}Gol</span>` : '';
+      const flag = m.goals.some((g) => g.team === t.id && flags.has(g.id)) ? `<span class="iz-goal-flag">${ICONS.ball}Gol</span>` : '';
       return `<div class="iz-team" style="${teamStyle(t)}">
         <div class="iz-team-l">
           <span class="iz-tname"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>
@@ -426,13 +419,13 @@
       </div>`;
     }
 
-    function watchLive(m) {
+    function watchLive(m, flags) {
       const state = getState();
       const s = T.score(m);
       const next = nextMatch();
       return `<span class="iz-kicker">${watchKicker(m)}</span>
       <section class="iz-board" aria-label="Skor: ${esc(team(m.home).name)} ${s.home}, ${esc(team(m.away).name)} ${s.away}">
-        ${watchTeam(m, 'home')}${watchTeam(m, 'away')}
+        ${watchTeam(m, 'home', flags)}${watchTeam(m, 'away', flags)}
       </section>
       <section class="iz-clock" aria-label="Kalan süre">
         <div class="iz-ring" data-clock data-timer-progress role="progressbar" aria-label="Geçen süre" aria-valuemin="0" aria-valuemax="100">

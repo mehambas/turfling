@@ -87,23 +87,20 @@ test('izleyici telefonda canlı maç: skor, golcüler, süre halkası, sıradaki
   assert.match(V.renderWatch({ updating: true }), /Güncelleniyor…/);
 });
 
-test('izleyici telefonda: gol olunca bir dakika boyunca o takımın skorunun yanında "Gol" işareti', () => {
+test('izleyici telefonda: yeni gol işaretliyse o takımın skorunun yanında "Gol" etiketi', () => {
   const s = setup();
   const now = Date.now();
   playFirst(s, now);
   const m = s.matches[1];
   T.startMatch(s, m, now - 5 * MIN);
   goal(m, 'home', s, 2, now);
+  const fresh = goal(m, 'away', s, 4, now);
   const V = viewer(s);
-  const rows = () => V.renderWatch().split('class="iz-team"').slice(1);
-  assert.deepEqual(rows().map((r) => r.includes('iz-goal-flag')), [false, false]);
-
-  goal(m, 'away', s, 4.5, now);
-  assert.deepEqual(rows().map((r) => r.includes('iz-goal-flag')), [false, true]);
-  assert.match(rows()[1], /iz-goal-flag[\s\S]*class="iz-goals">1</);
-
-  m.runningSince -= MIN;
-  assert.deepEqual(rows().map((r) => r.includes('iz-goal-flag')), [false, false]);
+  const rows = (flags) => V.renderWatch({ flags }).split('class="iz-team"').slice(1);
+  assert.deepEqual(rows(undefined).map((r) => r.includes('iz-goal-flag')), [false, false]);
+  assert.deepEqual(rows(new Set([fresh.id])).map((r) => r.includes('iz-goal-flag')), [false, true]);
+  assert.match(rows(new Set([fresh.id]))[1], /iz-goal-flag[\s\S]*class="iz-goals">1</);
+  assert.deepEqual(rows(new Set(['silinmis'])).map((r) => r.includes('iz-goal-flag')), [false, false]);
 });
 
 test('izleyici telefonda maç arası: tahmini başlama ve son maçın sonucu', () => {

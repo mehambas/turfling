@@ -6,6 +6,7 @@
   const WIDE = matchMedia(Views.WIDE_QUERY);
   // Tahmini saatler zamanla kayar; yayına yeni bir şey gelmese de ekran tazelenir.
   const REFRESH_MS = 15000;
+  const GOAL_FLAG_MS = 5000;
 
   const $ = (sel) => document.querySelector(sel);
   const id = /^#([a-z2-9]{10})$/.exec(location.hash)?.[1] || null;
@@ -19,6 +20,8 @@
   let heard = false;
   let chan = null;
   let viewHtml = '';
+  let seenGoals = null;
+  const flags = new Set();
   const ui = { sheet: false, scorersOpen: false };
   const V = Views.create(() => state);
   const showSheet = Views.sheetView(sheet);
@@ -43,8 +46,26 @@
     organizerOnline = snapshot.holderOnline !== false;
     state = snapshot.state ? T.migrate(LiveSync.localize(snapshot, receivedAt)) : null;
     if (state) T.resolveKnockouts(state);
+    noteGoals();
     writeCache();
     render();
+  }
+
+  // Sayfa açıldıktan sonraki ilk hâl yalnız başlangıç noktası; ondan sonra gelen her yeni gol işaretlenir.
+  function noteGoals() {
+    const goals = state ? state.matches.flatMap((m) => m.goals) : [];
+    const live = state && V.liveMatch();
+    const fresh = seenGoals && live ? live.goals.filter((g) => !seenGoals.has(g.id)) : [];
+    seenGoals = new Set(goals.map((g) => g.id));
+    for (const g of fresh) {
+      flags.add(g.id);
+      setTimeout(() => {
+        flags.delete(g.id);
+        render();
+      }, GOAL_FLAG_MS);
+    }
+    // iOS'ta titreşim yok; Android'de sayfaya en az bir kez dokunulmuş olmalı.
+    if (fresh.length && document.visibilityState === 'visible') navigator.vibrate?.([200, 100, 200]);
   }
 
   function notFound() {
@@ -83,7 +104,7 @@
     document.body.classList.toggle('is-wide', wide);
     document.body.classList.toggle('is-screen', wide);
     document.title = state ? `${V.tournamentName()} · Canlı` : 'Halı Saha Turnuvası · Canlı';
-    const html = V.renderWatch({ wide, notice, updating: !connected, organizerAway: !organizerOnline, full: !!document.fullscreenElement });
+    const html = V.renderWatch({ wide, notice, updating: !connected, organizerAway: !organizerOnline, full: !!document.fullscreenElement, flags });
     if (html !== viewHtml) $('#view').innerHTML = viewHtml = html;
     renderSheet();
     V.tickClocks();
