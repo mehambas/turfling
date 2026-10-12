@@ -332,11 +332,17 @@
     }
 
     const SYNC_PILL = '<span class="iz-pill is-sync" role="status">Güncelleniyor…</span>';
+    const AWAY_TEXT = 'Organizatörün cihazı bağlı değil, skor gecikebilir';
 
     // İzleyici sayfası: geniş ekranda yayın ekranı, telefonda alt alta düzen.
-    function renderWatch({ wide = false, notice = 'connecting', updating = false, full = false } = {}) {
+    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false } = {}) {
       const state = getState();
-      if (wide) return state ? renderScreen({ status: updating ? SYNC_PILL : '', full }) : screenNotice(notice);
+      const away = !updating && organizerAway && !!state?.started && !T.champion(state);
+      if (wide) {
+        if (!state) return screenNotice(notice);
+        const status = updating ? SYNC_PILL : away ? `<span class="iz-pill is-sync" role="status">${AWAY_TEXT}</span>` : '';
+        return renderScreen({ status, full });
+      }
 
       let pill = '';
       let body;
@@ -363,7 +369,7 @@
         <span class="iz-brand"><span class="iz-mark">${ICONS.ball}</span><span class="iz-brand-name">${esc(tournamentName())}</span></span>
         <span class="iz-pills">${state && updating ? SYNC_PILL : ''}${pill}</span>
       </header>
-      <main class="iz-main${layout}">${body}</main>
+      <main class="iz-main${layout}">${away ? `<p class="iz-alert" role="status">${AWAY_TEXT}</p>` : ''}${body}</main>
       ${state?.started ? `<div class="iz-foot"><button class="iz-open" data-action="sheet-open" aria-haspopup="dialog">${ICONS.list}Fikstür ve puan durumu</button></div>` : ''}
     </div>`;
     }

@@ -8,6 +8,7 @@
   const CONFIG_KEY = 'halisaha-turnuva-yayin';
   const TIME_FIELDS = ['startedAt', 'runningSince', 'endedAt'];
   const PING_MS = 25000;
+  const BEAT_MS = 25000;
   const DEAD_MS = 60000;
   const MAX_RETRY_MS = 30000;
 
@@ -111,6 +112,11 @@
         attempt = 0;
         restart();
       },
+      send(text) {
+        try {
+          if (open) ws.send(text);
+        } catch {}
+      },
       close() {
         closed = true;
         clearInterval(pingTimer);
@@ -136,6 +142,7 @@
     origin = globalThis.location?.origin || '',
     debounceMs = 300,
     retryMs = 2000,
+    beatMs = BEAT_MS,
   }) {
     let cfg = read();
     let chan = null;
@@ -145,6 +152,7 @@
     let everConnected = false;
     let fatal = null;
     let retryDelay = 0;
+    let beatTimer = null;
 
     function read() {
       try {
@@ -265,6 +273,11 @@
       emit();
     }
 
+    // İzleyiciler skorun güncel olup olmadığını bu haberden anlar: gelmezse yönetici cihazı bağlı değildir.
+    function beat() {
+      if (isHolder()) chan?.send(JSON.stringify({ type: 'beat', device: cfg.device, token: cfg.token }));
+    }
+
     function connect() {
       chan?.close();
       const url = `${origin.replace(/^http/, 'ws')}/api/t/${cfg.id}/ws`;
@@ -275,16 +288,21 @@
           if (isOpen) {
             everConnected = true;
             netError = false;
+            beat();
             if (cfg?.pending) schedule(0);
           }
           emit();
         },
       });
+      clearInterval(beatTimer);
+      beatTimer = setInterval(beat, beatMs);
     }
 
     function disconnect() {
       chan?.close();
       chan = null;
+      clearInterval(beatTimer);
+      beatTimer = null;
       clearTimeout(timer);
       timer = null;
       netError = false;

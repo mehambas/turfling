@@ -168,3 +168,17 @@ test('turnuva bitince şampiyon gösterilir', () => {
   assert.match(html, /Şampiyon/);
   assert.ok(html.includes(champ.name));
 });
+
+test('organizatörün cihazı bağlı değilse izleyici uyarılır; kendi bağlantısı yoksa yalnız "Güncelleniyor…"', () => {
+  const s = setup();
+  const now = Date.now();
+  playFirst(s, now);
+  T.startMatch(s, s.matches[1], now - MIN);
+  const V = viewer(s);
+  const away = /Organizatörün cihazı bağlı değil, skor gecikebilir/;
+  assert.match(V.renderWatch({ organizerAway: true }), away);
+  assert.match(V.renderWatch({ organizerAway: true, wide: true }), away);
+  assert.doesNotMatch(V.renderWatch({ organizerAway: false }), away);
+  assert.doesNotMatch(V.renderWatch({ organizerAway: true, updating: true }), away);
+  assert.doesNotMatch(viewer(T.createState()).renderWatch({ organizerAway: true }), away);
+});

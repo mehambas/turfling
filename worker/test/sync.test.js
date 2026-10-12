@@ -1,7 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { sampleState, startWorker } from './helpers.js';
+import { memoryStorage, sampleState, startWorker, waitFor } from './helpers.js';
 
 const LiveSync = createRequire(import.meta.url)('../../js/sync.js');
 
@@ -18,15 +18,6 @@ after(async () => {
   for (const d of devices) d.sync.stop();
   await worker?.dispose();
 });
-
-function memoryStorage() {
-  const map = new Map();
-  return {
-    getItem: (k) => (map.has(k) ? map.get(k) : null),
-    setItem: (k, v) => map.set(k, String(v)),
-    removeItem: (k) => map.delete(k),
-  };
-}
 
 function device(initial = sampleState()) {
   const d = {
@@ -66,16 +57,6 @@ function device(initial = sampleState()) {
 }
 
 const server = async (id) => (await fetch(`${base}/api/t/${id}`)).json();
-
-async function waitFor(check, label = 'koşul', timeout = 4000) {
-  const end = Date.now() + timeout;
-  for (;;) {
-    const value = await check();
-    if (value) return value;
-    if (Date.now() > end) throw new Error(`Zaman aşımı: ${label}`);
-    await new Promise((r) => setTimeout(r, 20));
-  }
-}
 
 const synced = (d) => waitFor(() => d.sync.status().pending === 0 && d.sync.status().connected, 'gönderim bitsin');
 

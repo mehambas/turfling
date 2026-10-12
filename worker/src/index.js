@@ -5,6 +5,8 @@ const ID_LENGTH = 10;
 const ID_PATTERN = new RegExp(`^[${ID_ALPHABET}]{${ID_LENGTH}}$`);
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_BODY_BYTES = 64 * 1024;
+// Yönetici cihazı 25 sn'de bir haber verir; iki haber kaçarsa izleyicilere "bağlı değil" denir.
+const PRESENCE_MS = 70 * 1000;
 
 class HttpError extends Error {
   constructor(code, status, extra = {}) {
@@ -67,6 +69,7 @@ export class Turnuva extends DurableObject {
     super(ctx, env);
     // İzleyiciler bağlantıyı canlı tutmak için "ping" gönderir; cevap DO'yu uyandırmadan verilir.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    this.presenceMs = Number(env.PRESENCE_MS) || PRESENCE_MS;
   }
 
   async init(tokenHash) {
@@ -91,14 +94,26 @@ export class Turnuva extends DurableObject {
   }
 
   async snapshot() {
-    const stored = await this.ctx.storage.get(['rev', 'state', 'clockOffset', 'holder']);
+    const stored = await this.ctx.storage.get(['rev', 'state', 'clockOffset', 'holder', 'seenAt']);
+    const serverTime = Date.now();
     return {
       rev: stored.get('rev') ?? 0,
       state: stored.get('state') ?? null,
       clockOffset: stored.get('clockOffset') ?? 0,
       holder: stored.get('holder') ?? null,
-      serverTime: Date.now(),
+      holderOnline: this.isOnline(stored.get('holder'), stored.get('seenAt'), serverTime),
+      serverTime,
     };
+  }
+
+  isOnline(holder, seenAt, now = Date.now()) {
+    return holder != null && seenAt != null && now - seenAt < this.presenceMs;
+  }
+
+  // Yönetici cihazından gelen her işaret (gönderim, devir, haber) cihazın bağlı olduğunu gösterir.
+  async markSeen(now = Date.now()) {
+    await this.ctx.storage.put('seenAt', now);
+    await this.ctx.storage.setAlarm(now + this.presenceMs);
   }
 
   broadcast(snapshot) {
@@ -110,11 +125,14 @@ export class Turnuva extends DurableObject {
     }
   }
 
+  async tokenMatches(token) {
+    const tokenHash = await this.ctx.storage.get('tokenHash');
+    return !!token && crypto.subtle.timingSafeEqual(await sha256(token), fromHex(tokenHash));
+  }
+
   async readAdminRequest(request) {
     const auth = request.headers.get('authorization') || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-    const tokenHash = await this.ctx.storage.get('tokenHash');
-    if (!token || !crypto.subtle.timingSafeEqual(await sha256(token), fromHex(tokenHash))) throw new HttpError('unauthorized', 401);
+    if (!(await this.tokenMatches(auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''))) throw new HttpError('unauthorized', 401);
 
     if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) throw new HttpError('too_large', 413);
     const raw = await request.arrayBuffer();
@@ -140,11 +158,13 @@ export class Turnuva extends DurableObject {
 
   async takeover(request) {
     const { device } = await this.readAdminRequest(request);
-    const changed = (await this.ctx.storage.get('holder')) !== device;
+    const before = await this.snapshot();
+    const changed = before.holder !== device;
     if (changed) await this.ctx.storage.put('holder', device);
+    await this.markSeen();
     const snapshot = await this.snapshot();
     // Yönetimi kaybeden cihaz da bu kanalı dinliyorsa salt okunura hemen geçer.
-    if (changed) this.broadcast(snapshot);
+    if (changed || !before.holderOnline) this.broadcast(snapshot);
     return json(snapshot);
   }
 
@@ -166,11 +186,30 @@ export class Turnuva extends DurableObject {
     // Organizatör saatiyle sunucu saati arasındaki fark; izleyici kalan süreyi bununla düzeltir.
     const clockOffset = serverTime - sentAt;
     await this.ctx.storage.put({ rev, state, clockOffset, holder: device, updatedAt: serverTime });
-    this.broadcast({ rev, state, clockOffset, holder: device, serverTime });
+    await this.markSeen(serverTime);
+    this.broadcast({ rev, state, clockOffset, holder: device, holderOnline: true, serverTime });
     return json({ rev, serverTime });
   }
 
-  webSocketMessage() {}
+  async webSocketMessage(ws, message) {
+    let msg;
+    try {
+      msg = JSON.parse(message);
+    } catch {
+      return;
+    }
+    if (msg?.type !== 'beat' || typeof msg.token !== 'string') return;
+    const stored = await this.ctx.storage.get(['holder', 'seenAt']);
+    if (msg.device !== stored.get('holder') || !(await this.tokenMatches(msg.token))) return;
+    const wasOnline = this.isOnline(stored.get('holder'), stored.get('seenAt'));
+    await this.markSeen();
+    if (!wasOnline) this.broadcast(await this.snapshot());
+  }
+
+  async alarm() {
+    const snapshot = await this.snapshot();
+    if (!snapshot.holderOnline) this.broadcast(snapshot);
+  }
 
   webSocketClose(ws, code, reason) {
     try {
