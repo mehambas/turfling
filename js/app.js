@@ -50,6 +50,10 @@
     download: svg('<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>'),
     upload: svg('<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>'),
     trophy: svg('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
+    broadcast: svg('<circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2"/>'),
+    copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
+    share: svg('<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4M12 2v13"/>'),
+    lock: svg('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
   };
 
   const PITCH_LINES =
@@ -64,6 +68,7 @@
 
   let storageWarned = false;
   let state = loadState();
+  let live = null;
   const prefs = loadPrefs();
   const ui = {
     tab: state.started ? 'dashboard' : 'setup',
@@ -93,7 +98,7 @@
     return T.createState();
   }
 
-  function saveState() {
+  function saveState({ sync = true } = {}) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (err) {
@@ -101,6 +106,7 @@
       if (!storageWarned) toast('Tarayıcı kayda izin vermiyor: sayfa kapanırsa veriler kaybolur. Yedek indirin.', 'warn');
       storageWarned = true;
     }
+    if (sync) live?.changed();
   }
 
   function loadPrefs() {
@@ -246,7 +252,7 @@
       setView(renderScreen());
     } else {
       renderChrome();
-      $('#view').className = `view view-${ui.tab}`;
+      $('#view').className = `view view-${ui.tab}${readOnly() ? ' is-readonly' : ''}`;
       if (ui.tab === 'dashboard') setView(renderDashboard());
       else if (ui.tab === 'fixtures') setView(renderFixtures());
       else setView(renderSetup());
@@ -287,6 +293,170 @@
       b.title = label;
       b.setAttribute('aria-label', label);
     }
+    renderLiveChrome();
+  }
+
+  const liveStatus = () => live?.status() ?? { mode: 'off' };
+  const readOnly = () => liveStatus().mode === 'follower';
+  const liveAvailable = () => /^https?:$/.test(location.protocol);
+
+  const READONLY_ACTIONS = new Set([
+    'tab',
+    'toggle-sound',
+    'toggle-theme',
+    'toggle-fullscreen',
+    'screen-fixtures',
+    'scroll-to',
+    'fixture-filter',
+    'export',
+    'picker-close',
+    'dialog-ok',
+    'dialog-cancel',
+    'live-open',
+    'live-copy',
+    'live-share',
+    'live-stop',
+    'live-takeover',
+  ]);
+
+  function liveLinks() {
+    const c = live?.config;
+    if (!c) return null;
+    return { viewer: `${location.origin}/izle#${c.id}`, admin: `${location.origin}/#yonet/${c.id}.${c.token}` };
+  }
+
+  function liveLabel(s) {
+    if (s.mode === 'error') return ['error', 'Yayın hatası'];
+    if (s.mode === 'follower') return ['follower', 'Salt okunur'];
+    if (s.offline) return ['offline', s.pending ? `Çevrimdışı · ${s.pending} değişiklik bekliyor` : 'Çevrimdışı'];
+    if (s.connecting) return ['connecting', 'Bağlanıyor…'];
+    return ['on', 'Yayında'];
+  }
+
+  function liveErrorText(error) {
+    if (error === 'unauthorized' || error === 'not_found') return 'Yayın bulunamadı ya da yönetici linki geçersiz.';
+    if (error === 'too_large') return 'Turnuva verisi yayın için fazla büyük.';
+    return 'Sunucu değişikliği kabul etmedi.';
+  }
+
+  let liveBarHtml = '';
+  let liveCardHtml = '';
+
+  function renderLiveChrome() {
+    const s = liveStatus();
+    const pill = $('#live-pill');
+    pill.hidden = s.mode === 'off';
+    if (!pill.hidden) {
+      const [kind, label] = liveLabel(s);
+      const count = s.mode === 'admin' && s.offline && s.pending ? `<span class="live-pill-count narrow-only">${s.pending}</span>` : '';
+      pill.className = `live-pill is-${kind}`;
+      pill.innerHTML = `<span class="live-pill-dot"></span><span class="live-pill-text wide-only">${label}</span>${count}`;
+      pill.title = `Canlı yayın: ${label}`;
+      pill.setAttribute('aria-label', pill.title);
+    }
+
+    let bar = '';
+    if (s.mode === 'follower') {
+      bar = `<div class="live-bar-in">
+        <span class="live-bar-icon">${ICONS.lock}</span>
+        <p><strong>Yönetim başka bir cihazda.</strong> <span>Bu ekran salt okunur, skoru o cihaz giriyor.</span></p>
+        <button class="btn btn-sm btn-primary" data-action="live-takeover">Devral</button>
+      </div>`;
+    } else if (s.mode === 'error') {
+      bar = `<div class="live-bar-in is-error">
+        <span class="live-bar-icon">${ICONS.broadcast}</span>
+        <p><strong>Canlı yayına gönderilemiyor.</strong> <span>${liveErrorText(s.error)}</span></p>
+        <button class="btn btn-sm" data-action="live-stop">Bu cihazda kapat</button>
+      </div>`;
+    }
+    const barEl = $('#live-bar');
+    barEl.hidden = !bar;
+    if (bar !== liveBarHtml) barEl.innerHTML = liveBarHtml = bar;
+    $('#view').classList.toggle('is-readonly', s.mode === 'follower');
+  }
+
+  function renderLiveCard() {
+    const s = liveStatus();
+    const [kind, label] = liveLabel(s);
+    const head = `<div class="sc-head"><h2 class="card-title" id="h-live">Canlı yayın</h2>${s.mode === 'off' ? '' : `<span class="live-state is-${kind}">${label}</span>`}</div>`;
+    let body;
+    if (!liveAvailable() || !live) {
+      body = '<p class="sc-hint">Canlı yayın, uygulama internetteki adresinden açıldığında kullanılabilir.</p>';
+    } else if (s.mode === 'off') {
+      body = `<p class="sc-hint">İzleyiciler skoru tek bir linkle kendi telefonlarından ya da TV'den canlı izler. Skoru bu cihaz girer.</p>
+        <div class="btn-row"><button class="btn btn-primary btn-sm" data-action="live-start">${ICONS.broadcast}Yayını başlat</button></div>`;
+    } else {
+      const links = liveLinks();
+      const buttons = (key) =>
+        `<button class="btn btn-sm" data-action="live-copy" data-link="${key}">${ICONS.copy}Kopyala</button>${
+          navigator.share ? `<button class="btn btn-sm" data-action="live-share" data-link="${key}">${ICONS.share}Paylaş</button>` : ''
+        }`;
+      body = `<div class="live-link">
+          <span class="sc-label">İzleyici linki</span>
+          <a class="live-url" href="${esc(links.viewer)}" target="_blank" rel="noopener">${esc(links.viewer.replace(/^https?:\/\//, ''))}</a>
+          <div class="btn-row">${buttons('viewer')}</div>
+        </div>
+        <div class="live-link">
+          <span class="sc-label">Yönetici linki</span>
+          <p class="sc-hint">Bu linki açan cihaz yönetimi devralıp skoru girebilir. Yalnız güvendiğin kişiye gönder.</p>
+          <div class="btn-row">${buttons('admin')}</div>
+        </div>
+        <div class="sc-foot live-foot"><span>Yeni turnuvalar da aynı linkten yayınlanır.</span><button class="btn btn-sm btn-text-danger" data-action="live-stop">Bu cihazda kapat</button></div>`;
+    }
+    liveCardHtml = `<section class="card setup-card share-card" id="yayin" aria-labelledby="h-live">${head}${body}</section>`;
+    return liveCardHtml;
+  }
+
+  function refreshLiveCard() {
+    const card = $('#yayin');
+    if (!card) return;
+    const before = liveCardHtml;
+    const html = renderLiveCard();
+    if (html !== before) card.outerHTML = html;
+  }
+
+  function onLiveChange() {
+    renderLiveChrome();
+    refreshLiveCard();
+  }
+
+  function adoptRemote(remote) {
+    state = T.migrate(remote);
+    T.resolveKnockouts(state);
+    saveState({ sync: false });
+    if (dialog.kind === 'edit' && !match(dialog.matchId)) closeDialog(false);
+    if (ui.goalPicker && !liveMatch()?.goals.some((g) => g.id === ui.goalPicker)) ui.goalPicker = null;
+    render();
+  }
+
+  function liveNotice(n) {
+    if (n.kind !== 'lost') return;
+    toast(
+      n.lost
+        ? `Yönetim başka bir cihaza geçmiş. Bu cihazdaki son ${n.lost} değişiklik yayına gitmedi.`
+        : 'Yönetim başka bir cihaza geçti. Bu cihaz artık salt okunur.',
+      'warn',
+    );
+  }
+
+  async function handleAdminHash() {
+    const link = LiveSync.parseAdminHash(location.hash);
+    if (!link) return;
+    // Yönetici anahtarı adres çubuğunda, geçmişte ya da ekran paylaşımında görünmesin.
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!live) return toast('Canlı yayın bu adreste kullanılamıyor', 'warn');
+    const c = live.config;
+    if (c && c.id === link.id && c.token === link.token) return toast('Bu cihaz zaten yayına bağlı', 'ok');
+    if (state.started || state.players.length) {
+      const ok = await confirmDialog({
+        title: 'Canlı yayına bağlanılsın mı?',
+        body: 'Bu cihazdaki turnuva verileri yayındaki turnuvayla değiştirilir. İstersen önce Kurulum → Yedek → İndir.',
+        ok: 'Bağlan',
+      });
+      if (!ok) return;
+    }
+    live.join(link.id, link.token);
+    toast('Yayına bağlanıldı. Skoru girmek için yönetimi devral.', 'ok');
   }
 
   function renderDashboard() {
@@ -694,7 +864,7 @@
         ${state.started ? '' : renderSteps()}
       </div>
       <div class="setup">
-        <div class="setup-side">${renderPlayers()}${renderData()}</div>
+        <div class="setup-side">${renderPlayers()}${renderData()}${renderLiveCard()}</div>
         <div class="setup-main">${renderTeams()}${renderFormat()}</div>
       </div>
       ${renderReady()}`;
@@ -1250,8 +1420,8 @@
   }
 
   function play(pattern) {
-    // Yayın ekranı çoğu zaman aynı bilgisayarda açık; düdük iki kez çalmasın.
-    if (!prefs.sound || isScreen()) return;
+    // Yayın ekranı çoğu zaman aynı bilgisayarda açık; düdük iki kez çalmasın. Salt okunur cihaz da yöneten cihazla birlikte çalmasın.
+    if (!prefs.sound || isScreen() || readOnly()) return;
     ensureAudio();
     if (!audio) return;
     const t0 = audio.currentTime + 0.03;
@@ -1717,6 +1887,66 @@
       render();
     },
 
+    async 'live-start'() {
+      try {
+        await live.start();
+        toast('Yayın başladı. İzleyici linkini paylaşabilirsin.', 'ok');
+      } catch {
+        toast('Yayın başlatılamadı. İnternet bağlantısını kontrol edin.', 'warn');
+      }
+    },
+
+    async 'live-copy'(el) {
+      const url = liveLinks()?.[el.dataset.link];
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast(el.dataset.link === 'admin' ? 'Yönetici linki kopyalandı' : 'İzleyici linki kopyalandı', 'ok');
+      } catch {
+        toast('Kopyalanamadı', 'warn');
+      }
+    },
+
+    async 'live-share'(el) {
+      const url = liveLinks()?.[el.dataset.link];
+      if (!url) return;
+      try {
+        await navigator.share({ title: el.dataset.link === 'admin' ? `${tournamentName()} · yönetim` : tournamentName(), url });
+      } catch {}
+    },
+
+    async 'live-stop'() {
+      const ok = await confirmDialog({
+        title: 'Bu cihazda yayın kapatılsın mı?',
+        body: 'Bu cihaz artık yayına göndermez; izleyiciler son hâli görmeye devam eder. Yeniden bağlanmak için yönetici linki gerekir.',
+        ok: 'Kapat',
+        danger: true,
+      });
+      if (ok) live.stop();
+    },
+
+    async 'live-takeover'() {
+      const ok = await confirmDialog({
+        title: 'Yönetim devralınsın mı?',
+        body: 'Skoru bundan sonra bu cihaz girer; şu an yöneten cihaz salt okunur olur.',
+        ok: 'Devral',
+      });
+      if (!ok) return;
+      try {
+        await live.takeover();
+        toast('Yönetim bu cihazda', 'ok');
+      } catch {
+        toast('Devralınamadı. İnternet bağlantısını kontrol edin.', 'warn');
+      }
+    },
+
+    'live-open'() {
+      ui.tab = 'setup';
+      ui.goalPicker = null;
+      render();
+      $('#yayin')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+
     'dialog-ok'() {
       closeDialog(true);
     },
@@ -1733,12 +1963,14 @@
     const fn = actions[el.dataset.action];
     if (!fn) return;
     e.preventDefault();
+    if (readOnly() && !READONLY_ACTIONS.has(el.dataset.action)) return toast('Yönetim başka bir cihazda. Değiştirmek için önce devral.', 'warn');
     ensureAudio();
     await fn(el, e);
   });
 
   document.addEventListener('input', (e) => {
     const el = e.target;
+    if (readOnly()) return;
     switch (el.dataset.field) {
       case 'player-name': {
         const p = player(el.dataset.id);
@@ -1773,6 +2005,7 @@
 
   document.addEventListener('change', (e) => {
     const el = e.target;
+    if (readOnly()) return;
     const field = el.dataset.field;
     if (field === 'player-name' || field === 'team-name') {
       const item = field === 'player-name' ? player(el.dataset.id) : team(el.dataset.team);
@@ -1815,14 +2048,14 @@
       }
     }
     if (isScreen() || e.target.closest?.('input, textarea, select, button, [contenteditable]')) return;
-    if (e.code === 'Space' && ui.tab === 'dashboard' && liveMatch()) {
+    if (e.code === 'Space' && ui.tab === 'dashboard' && liveMatch() && !readOnly()) {
       e.preventDefault();
       actions['timer-toggle']();
     }
   });
 
   document.addEventListener('paste', (e) => {
-    if (e.target.id !== 'new-player') return;
+    if (e.target.id !== 'new-player' || readOnly()) return;
     const text = e.clipboardData?.getData('text') || '';
     if (!/[\n\r]/.test(text)) return;
     e.preventDefault();
@@ -1869,6 +2102,7 @@
   });
 
   window.addEventListener('hashchange', () => {
+    if (LiveSync.parseAdminHash(location.hash)) return handleAdminHash();
     ui.screenFixtures = false;
     render();
   });
@@ -1877,8 +2111,10 @@
     if (document.visibilityState === 'visible') {
       keepAwake(isScreen() || !!liveMatch());
       tick();
+      live?.wake();
     }
   });
+  window.addEventListener('online', () => live?.wake());
   document.addEventListener('fullscreenchange', () => {
     if (isScreen()) render();
   });
@@ -1909,7 +2145,11 @@
   $('.brand-mark').innerHTML = ICONS.ball;
   $('.tool-screen').innerHTML = ICONS.tv;
   T.resolveKnockouts(state);
+  if (liveAvailable() && !isScreen()) {
+    live = LiveSync.admin({ getState: () => state, onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
+  }
   render();
+  handleAdminHash();
   setInterval(tick, 250);
   setInterval(refreshView, 5000);
 })();

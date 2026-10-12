@@ -1,19 +1,13 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import { unstable_startWorker } from 'wrangler';
-
-const config = fileURLToPath(new URL('../wrangler.toml', import.meta.url));
+import { sampleState, startWorker } from './helpers.js';
 
 let worker;
 let base;
 
 before(async () => {
-  worker = await unstable_startWorker({
-    config,
-    dev: { server: { port: 0 }, inspector: false, persist: false, logLevel: 'none', watch: false },
-  });
-  base = String(await worker.url).replace(/\/$/, '');
+  worker = await startWorker();
+  base = worker.base;
 });
 
 after(async () => {
@@ -23,21 +17,6 @@ after(async () => {
 const DEVICE_A = 'cihaz-aaaaaaaa';
 const DEVICE_B = 'cihaz-bbbbbbbb';
 
-const sampleState = (extra = {}) => ({
-  version: 1,
-  name: 'Test',
-  players: [{ id: 'p1', name: 'Ali' }],
-  teams: [
-    { id: 'A', name: 'Kırmızılar', color: 'red', playerIds: ['p1'] },
-    { id: 'B', name: 'Maviler', color: 'blue', playerIds: [] },
-    { id: 'C', name: 'Sarılar', color: 'yellow', playerIds: [] },
-  ],
-  settings: {},
-  started: true,
-  matches: [],
-  lots: {},
-  ...extra,
-});
 
 async function api(path, { method = 'GET', token, body, rawBody } = {}) {
   const headers = {};
