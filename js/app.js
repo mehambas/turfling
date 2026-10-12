@@ -29,13 +29,15 @@
     fixtureFilter: 'all',
     colorMenu: null,
     moveMenu: null,
-    screenFixtures: false,
+    sheet: false,
+    scorersOpen: false,
   };
   const dialog = { kind: null, opts: null, resolve: null, matchId: null, pens: { home: '', away: '' }, error: '' };
   let viewHtml = '';
   let sideHtml = '';
 
   const isScreen = () => location.hash === '#ekran';
+  const WIDE = matchMedia(Views.WIDE_QUERY);
 
   function loadState() {
     try {
@@ -81,6 +83,7 @@
   }
 
   const V = Views.create(() => state);
+  const showSheet = Views.sheetView($('#sheet'));
   const { team, player, liveMatch, nextMatch, findStage, estimates, tournamentName, lastFinished } = V;
   const { matchTitle, matchLabel, placeholder, teamName, lastResult, championData, renderStandings, fixtureGroups } = V;
   const match = (id) => state.matches.find((m) => m.id === id) || null;
@@ -132,6 +135,7 @@
     applyTheme();
     const screen = isScreen();
     document.body.classList.toggle('is-screen', screen);
+    document.body.classList.toggle('is-wide', screen && WIDE.matches);
     if (screen) {
       document.title = `${tournamentName()} · Yayın`;
       $('#view').className = 'screen';
@@ -143,6 +147,7 @@
       else if (ui.tab === 'fixtures') setView(renderFixtures());
       else setView(renderSetup());
     }
+    renderSheet();
     renderDialog();
     tick();
     keepAwake(screen || !!liveMatch());
@@ -192,6 +197,8 @@
     'toggle-theme',
     'toggle-fullscreen',
     'screen-fixtures',
+    'sheet-close',
+    'scorers-toggle',
     'scroll-to',
     'fixture-filter',
     'export',
@@ -255,6 +262,12 @@
         <button class="btn btn-sm" data-action="live-stop">Bu cihazda kapat</button>
       </div>`;
     }
+    const watch = s.mode === 'admin' || s.mode === 'follower';
+    const screen = $('.tool-screen');
+    screen.setAttribute('href', watch ? liveLinks().viewer : '#ekran');
+    screen.title = watch ? 'İzleyici sayfası (TV / projektör)' : 'Yayın ekranı (TV / projektör)';
+    screen.setAttribute('aria-label', watch ? 'İzleyici sayfasını yeni pencerede aç' : 'Yayın ekranını yeni pencerede aç');
+
     const barEl = $('#live-bar');
     barEl.hidden = !bar;
     if (bar !== liveBarHtml) barEl.innerHTML = liveBarHtml = bar;
@@ -650,7 +663,7 @@
     </section>`;
   }
 
-  function fixtureRow(m, st, it, { readonly = false, approx = true } = {}) {
+  function fixtureRow(m, st, it, { readonly = false } = {}) {
     const skipped = m.stage === 'playoff' && !st.settings.playoffEnabled;
     const s = T.score(m);
     const w = T.winnerOf(m);
@@ -672,7 +685,7 @@
     let time = '';
     if (skipped) time = 'Kaldırıldı';
     else if (m.status === 'done') time = fmtTime(m.startedAt);
-    else if (it) time = `${approx ? '~' : ''}${fmtTime(it.estStart)}`;
+    else if (it) time = `~${fmtTime(it.estStart)}`;
     const score = m.status === 'done' ? `${s.home} – ${s.away}${m.pens ? `<small>pen. ${m.pens.home}–${m.pens.away}</small>` : ''}` : '–';
     let act = '';
     if (!readonly) {
@@ -993,19 +1006,19 @@
   }
 
   function renderScreen() {
-    const panel = ui.screenFixtures && state.started ? screenFixtures(estimates(state)) : '';
-    return V.renderScreen({ panel, full: !!document.fullscreenElement });
+    return V.renderScreen({ full: !!document.fullscreenElement });
   }
 
-  function screenFixtures(est) {
-    const groups = fixtureGroups(state)
-      .map((g) => ({ ...g, matches: g.matches.filter((m) => m.stage !== 'playoff' || state.settings.playoffEnabled) }))
-      .filter((g) => g.matches.length);
-    return `<div class="tv-overlay" data-action="screen-fixtures"></div>
-      <section class="tv-panel" role="dialog" aria-label="Fikstür">
-        <div class="tv-panel-head"><h2 class="page-title">Fikstür</h2><button class="icon-btn icon-soft" data-action="screen-fixtures" aria-label="Kapat">${ICONS.x}</button></div>
-        ${groups.map((g) => fixtureCard(g, state, est, { readonly: true, approx: false })).join('')}
-      </section>`;
+  function renderSheet() {
+    const open = ui.sheet && isScreen();
+    if (!showSheet(open ? V.renderSheet({ scorersOpen: ui.scorersOpen }) : '')) ui.sheet = false;
+  }
+
+  function closeSheet() {
+    if (!ui.sheet) return;
+    ui.sheet = false;
+    renderSheet();
+    $('[data-action="screen-fixtures"]')?.focus();
   }
 
   function renderDialog() {
@@ -1261,8 +1274,15 @@
     },
 
     'screen-fixtures'() {
-      ui.screenFixtures = !ui.screenFixtures;
-      render();
+      ui.sheet = true;
+      renderSheet();
+    },
+
+    'sheet-close': closeSheet,
+
+    'scorers-toggle'() {
+      ui.scorersOpen = !ui.scorersOpen;
+      renderSheet();
     },
 
     'scroll-to'(el) {
@@ -1741,11 +1761,6 @@
     if (dialog.kind) return;
     if (e.key === 'Escape') {
       if (closeMenus()) return;
-      if (isScreen() && ui.screenFixtures) {
-        ui.screenFixtures = false;
-        render();
-        return;
-      }
       if (ui.goalPicker) {
         ui.goalPicker = null;
         render();
@@ -1797,6 +1812,15 @@
     if (e.target === dialogEl) dismissDialog();
   });
 
+  const sheetEl = $('#sheet');
+  sheetEl.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    closeSheet();
+  });
+  sheetEl.addEventListener('click', (e) => {
+    if (e.target === sheetEl) closeSheet();
+  });
+
   // Yayın ekranı ve ikinci pencereler skoru localStorage üzerinden alır.
   window.addEventListener('storage', (e) => {
     if (e.key !== STORAGE_KEY) return;
@@ -1808,7 +1832,7 @@
 
   window.addEventListener('hashchange', () => {
     if (LiveSync.parseAdminHash(location.hash)) return handleAdminHash();
-    ui.screenFixtures = false;
+    ui.sheet = false;
     render();
   });
 
@@ -1823,14 +1847,19 @@
   document.addEventListener('fullscreenchange', () => {
     if (isScreen()) render();
   });
+  WIDE.addEventListener('change', () => {
+    if (isScreen()) render();
+  });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (!isScreen()) renderChrome();
   });
 
   function refreshView() {
     let html = null;
-    if (isScreen()) html = renderScreen();
-    else if (!state.started) return;
+    if (isScreen()) {
+      html = renderScreen();
+      renderSheet();
+    } else if (!state.started) return;
     else if (ui.tab === 'fixtures') html = renderFixtures();
     else if (ui.tab === 'dashboard') {
       const side = $('#dash-side');

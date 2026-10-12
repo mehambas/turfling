@@ -7,6 +7,7 @@
   const MINUTE = T.MINUTE;
   const DEFAULT_NAME = 'Halı Saha Turnuvası';
   const RING_LENGTH = 2 * Math.PI * 88;
+  const WIDE_QUERY = '(min-width: 761px) and (min-height: 500px) and (orientation: landscape)';
 
   const COLORS = {
     red: { label: 'Kırmızı', plural: 'Kırmızılar', hex: '#e5484d' },
@@ -113,6 +114,26 @@
     }
   }
 
+  function sheetView(dialog) {
+    let shown = '';
+    return (html) => {
+      if (!html) {
+        if (dialog.open) dialog.close();
+        dialog.innerHTML = shown = '';
+        return false;
+      }
+      if (html !== shown) {
+        const top = dialog.querySelector('.iz-sheet')?.scrollTop ?? 0;
+        const focused = dialog.contains(document.activeElement) ? document.activeElement.dataset.action : null;
+        dialog.innerHTML = shown = html;
+        dialog.querySelector('.iz-sheet').scrollTop = top;
+        if (focused) dialog.querySelector(`button[data-action="${focused}"]`)?.focus({ preventScroll: true });
+      }
+      if (!dialog.open) dialog.showModal();
+      return true;
+    };
+  }
+
   const WATCH_NOTICES = {
     connecting: ['Canlı yayın', 'Bağlanıyor…', ''],
     notfound: ['Canlı yayın', 'Yayın bulunamadı', 'Link eksik ya da hatalı. Organizatörden linki yeniden iste.'],
@@ -215,7 +236,7 @@
       return groups;
     }
 
-    function renderScreen({ panel = '', status = '', full = false } = {}) {
+    function renderScreen({ status = '', full = false } = {}) {
       const state = getState();
       const live = liveMatch();
       const champ = state.started ? T.champion(state) : null;
@@ -243,7 +264,6 @@
         ${body}
         ${next ? screenNext(next, est) : ''}
       </div>
-      ${panel}
     </div>`;
     }
 
@@ -598,5 +618,5 @@
     };
   }
 
-  return { COLORS, ICONS, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, keepAwake, create };
+  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, keepAwake, sheetView, create };
 });

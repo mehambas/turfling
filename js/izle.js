@@ -3,7 +3,7 @@
 
   const T = window.Tournament;
   const CACHE_PREFIX = 'halisaha-izle-';
-  const WIDE = matchMedia('(min-width: 761px) and (min-height: 500px) and (orientation: landscape)');
+  const WIDE = matchMedia(Views.WIDE_QUERY);
   // Tahmini saatler zamanla kayar; yayına yeni bir şey gelmese de ekran tazelenir.
   const REFRESH_MS = 15000;
 
@@ -19,9 +19,9 @@
   let heard = false;
   let chan = null;
   let viewHtml = '';
-  let sheetHtml = '';
   const ui = { sheet: false, scorersOpen: false };
   const V = Views.create(() => state);
+  const showSheet = Views.sheetView(sheet);
 
   // Son bilinen hâl saklanır: sahada internet yokken sayfa yeniden açılırsa boş ekran yerine o görünür.
   function readCache() {
@@ -91,21 +91,7 @@
   }
 
   function renderSheet() {
-    const html = ui.sheet ? V.renderSheet({ scorersOpen: ui.scorersOpen }) : '';
-    if (!html) {
-      ui.sheet = false;
-      if (sheet.open) sheet.close();
-      sheet.innerHTML = sheetHtml = '';
-      return;
-    }
-    if (html !== sheetHtml) {
-      const top = sheet.querySelector('.iz-sheet')?.scrollTop ?? 0;
-      const focused = sheet.contains(document.activeElement) ? document.activeElement.dataset.action : null;
-      sheet.innerHTML = sheetHtml = html;
-      sheet.querySelector('.iz-sheet').scrollTop = top;
-      if (focused) sheet.querySelector(`button[data-action="${focused}"]`)?.focus();
-    }
-    if (!sheet.open) sheet.showModal();
+    if (!showSheet(ui.sheet ? V.renderSheet({ scorersOpen: ui.scorersOpen }) : '')) ui.sheet = false;
   }
 
   function closeSheet() {
