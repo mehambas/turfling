@@ -3598,6 +3598,49 @@ body.is-screen .live-bar {
 
 .is-wide .iz-dialog::backdrop {
   background: rgb(4 20 12 / 0.6);
+  animation: iz-fade 0.28s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.iz-dialog.is-closing .iz-sheet {
+  animation: iz-sink 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.iz-dialog.is-closing::backdrop {
+  animation: iz-fade 0.24s cubic-bezier(0.4, 0, 1, 1) reverse both;
+}
+
+.is-wide .iz-dialog.is-closing .iz-sheet {
+  animation: iz-shrink 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes iz-open {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 24px) scale(0.94);
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes iz-shrink {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 12px) scale(0.97);
+  }
+}
+
+@keyframes iz-sink {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 24px);
+  }
+}
+
+@keyframes iz-fade {
+  from {
+    opacity: 0;
+  }
 }
 
 .is-wide .iz-peek,
@@ -3611,7 +3654,8 @@ body.is-screen .live-bar {
   width: min(980px, calc(100vw - 32px));
   padding: 20px 24px;
   border-radius: 28px;
-  animation: none;
+  transform-origin: 50% 100%;
+  animation: iz-open 0.38s cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .is-wide .iz-sheet-top {

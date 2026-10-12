@@ -83,7 +83,8 @@ test('izleyici telefonda canlı maç: skor, golcüler, süre halkası, sıradaki
   assert.match(html, /Sıradaki<br>\d\d:\d\d/);
   assert.doesNotMatch(html, /Güncelleniyor/);
   assert.doesNotMatch(html, /~/);
-  assert.deepEqual([...actionsIn(html)], ['sheet-open']);
+  assert.deepEqual([...actionsIn(html)], ['team']);
+  assert.equal((html.match(/data-action="team" data-team="/g) || []).length, 2, 'iki skor satırı takım sayfasını açar');
   assert.match(V.renderWatch({ updating: true }), /Güncelleniyor…/);
 });
 
@@ -198,3 +199,65 @@ test('organizatörün cihazı bağlı değilse izleyici uyarılır; kendi bağla
   assert.doesNotMatch(V.renderWatch({ organizerAway: true, updating: true }), away);
   assert.doesNotMatch(viewer(T.createState()).renderWatch({ organizerAway: true }), away);
 });
+
+test('alt sekmeler: Maç, Fikstür, Puan; seçili olan işaretli', () => {
+  const html = viewer(setup()).renderTabBar('puan');
+  assert.deepEqual([...html.matchAll(/data-tab="(\w+)" aria-selected="(\w+)"/g)].map((m) => `${m[1]}:${m[2]}`), ['mac:false', 'fikstur:false', 'puan:true']);
+  assert.match(html, /iz-tab-dot/);
+});
+
+test('Fikstür sekmesi: gruplar kart, takım adları takım sayfasını, canlı skor Maç sekmesini açar', () => {
+  const s = setup();
+  const now = Date.now();
+  playFirst(s, now);
+  T.startMatch(s, s.matches[1], now - MIN);
+  const html = viewer(s).renderFixturePage();
+  assert.match(html, /<h1 class="iz-large">Fikstür<\/h1>/);
+  assert.match(html, /\d+ maç · tahmini bitiş \d\d:\d\d/);
+  assert.equal((html.match(/class="iz-card iz-fx-card"/g) || []).length, 3);
+  assert.match(html, /<button class="iz-fx-score" data-action="tab" data-tab="mac"/);
+  assert.match(html, /data-action="team" data-team="/);
+  assert.match(html, /Lig 1\.si/, 'belli olmayan takım düğme değil, yer tutucu');
+  assert.doesNotMatch(html, /~/);
+});
+
+test('Puan sekmesi: satırlar takım sayfasını açar, gol krallığı takım adıyla açık liste', () => {
+  const s = setup();
+  playFirst(s, Date.now());
+  const html = viewer(s).renderStandingsPage();
+  assert.equal((html.match(/class="iz-st-row" data-action="team"/g) || []).length, 3);
+  assert.match(html, /1\. finale direkt · 2\. ve 3\. playoff/);
+  const homeTeam = s.teams.find((t) => t.id === s.matches[0].home);
+  assert.match(html, new RegExp(`${playerName(s, s.matches[0], 'home')}<small>${homeTeam.name}</small></span><strong>2<`));
+  assert.doesNotMatch(html, /scorers-toggle/);
+});
+
+test('takım sayfası: sıra ve puan, gol atmayanlar dahil oyuncular, maçlar G/B/M ile, sıradaki maç', () => {
+  const s = setup();
+  const now = Date.now();
+  const first = playFirst(s, now);
+  const winner = s.teams.find((t) => t.id === first.home);
+  const html = viewer(s).renderTeamPage(winner.id);
+  assert.match(html, new RegExp(`<h1>${winner.name}</h1>`));
+  assert.match(html, /<b>1\.<\/b><span>Lig sırası<\/span><\/div><div><b>3<\/b><span>Puan<\/span>/);
+  assert.equal((html.match(/class="iz-pl-name"/g) || []).length, winner.playerIds.length);
+  assert.match(html, /Gol kralı/);
+  assert.match(html, /<b class="is-zero">0<\/b>/);
+  assert.match(html, /<span class="iz-tm-score">2–1<\/span><span class="iz-res is-g"/);
+  assert.match(html, /Eleme maçları lig bitince belli olur/);
+  assert.match(html, /Sıradaki maç · tahmini başlama/);
+  assert.equal(viewer(s).renderTeamPage('yok'), '');
+});
+
+test('takım sayfası: takım sahadaysa canlı skor ve "Maça git"', () => {
+  const s = setup();
+  const now = Date.now();
+  playFirst(s, now);
+  const m = s.matches[1];
+  T.startMatch(s, m, now - MIN);
+  const html = viewer(s).renderTeamPage(m.home);
+  assert.match(html, /Şu an sahada · 2\. maç/);
+  assert.match(html, /data-action="tab" data-tab="mac">Maça git/);
+  assert.match(html, /<li class="is-live">/);
+});
+

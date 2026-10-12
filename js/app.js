@@ -83,7 +83,10 @@
   }
 
   const V = Views.create(() => state);
-  const showSheet = Views.sheetView($('#sheet'));
+  const showSheet = Views.sheetView($('#sheet'), {
+    returnFocus: '[data-action="screen-fixtures"]',
+    onDismiss: () => (ui.sheet = false),
+  });
   const { team, player, liveMatch, nextMatch, findStage, estimates, tournamentName, lastFinished } = V;
   const { matchTitle, matchLabel, placeholder, teamName, lastResult, championData, renderStandings, fixtureGroups } = V;
   const match = (id) => state.matches.find((m) => m.id === id) || null;
@@ -1035,7 +1038,6 @@
     if (!ui.sheet) return;
     ui.sheet = false;
     renderSheet();
-    $('[data-action="screen-fixtures"]')?.focus();
   }
 
   function renderDialog() {

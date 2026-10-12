@@ -46,6 +46,14 @@
     plus: svg('<path d="M12 5v14M5 12h14"/>'),
     check: svg('<path d="m5 12 5 5 9-10"/>'),
     chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+    back: svg('<path d="m15 18-6-6 6-6"/>'),
+    forward: svg('<path d="m9 18 6-6-6-6"/>'),
+    tabMac: svg('<path d="M12 2.5a9.5 9.5 0 1 1-8.23 4.75"/><path d="m12 7.5 4 2.9-1.5 4.7h-5L8 10.4z"/>'),
+    tabMacOn: svg('<path d="M12 2.5a9.5 9.5 0 1 1-8.23 4.75"/><path d="m12 7.5 4 2.9-1.5 4.7h-5L8 10.4z" fill="currentColor"/>'),
+    tabFikstur: svg('<rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/>'),
+    tabFiksturOn: svg('<path d="M8 2.5v4M16 2.5v4"/><path d="M6 3.5h12a4 4 0 0 1 4 4V18a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V7.5a4 4 0 0 1 4-4zM6.8 12.8v2.4h2.4v-2.4zm4 0v2.4h2.4v-2.4zm4 0v2.4h2.4v-2.4zm-8 3.5v2.4h2.4v-2.4zm4 0v2.4h2.4v-2.4z" fill="currentColor" stroke="none" fill-rule="evenodd"/>'),
+    tabPuan: svg('<path d="M9 21V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v15"/><path d="M9 10H4a1 1 0 0 0-1 1v10M15 14h5a1 1 0 0 1 1 1v6M3 21h18"/>'),
+    tabPuanOn: svg('<path d="M2 22V10.5A1.5 1.5 0 0 1 3.5 9H8V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V13h4.5a1.5 1.5 0 0 1 1.5 1.5V22z" fill="currentColor" stroke="none"/>'),
     swap: svg('<path d="M4 8h14l-4-4M20 16H6l4 4"/>'),
     shuffle: svg('<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'),
     undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
@@ -114,13 +122,49 @@
     }
   }
 
-  function sheetView(dialog) {
+  // Kapanırken pencere önce küçülerek kaybolur; dialog ancak animasyon bitince kapanır.
+  function sheetView(dialog, { returnFocus = '', onDismiss = () => {} } = {}) {
     let shown = '';
+    let opener = null;
+    let closing = false;
+    let ours = false;
+    const finish = () => {
+      if (!closing) return;
+      closing = false;
+      dialog.classList.remove('is-closing');
+      ours = true;
+      dialog.close();
+      ours = false;
+      dialog.innerHTML = shown = '';
+      const back = opener?.isConnected && opener !== document.body ? opener : returnFocus && document.querySelector(returnFocus);
+      back?.focus({ preventScroll: true });
+      opener = null;
+    };
+    dialog.addEventListener('animationend', (e) => {
+      if (e.target.classList?.contains('iz-sheet')) finish();
+    });
+    // Chrome, Esc'ye üst üste basılınca "cancel" olmadan doğrudan kapatabiliyor.
+    dialog.addEventListener('close', () => {
+      if (ours) return;
+      closing = false;
+      dialog.classList.remove('is-closing');
+      dialog.innerHTML = shown = '';
+      onDismiss();
+    });
     return (html) => {
       if (!html) {
-        if (dialog.open) dialog.close();
-        dialog.innerHTML = shown = '';
+        if (dialog.open && !closing) {
+          closing = true;
+          dialog.classList.add('is-closing');
+          setTimeout(finish, 400);
+        } else if (!dialog.open) {
+          dialog.innerHTML = shown = '';
+        }
         return false;
+      }
+      if (closing) {
+        closing = false;
+        dialog.classList.remove('is-closing');
       }
       if (html !== shown) {
         const top = dialog.querySelector('.iz-sheet')?.scrollTop ?? 0;
@@ -129,7 +173,10 @@
         dialog.querySelector('.iz-sheet').scrollTop = top;
         if (focused) dialog.querySelector(`button[data-action="${focused}"]`)?.focus({ preventScroll: true });
       }
-      if (!dialog.open) dialog.showModal();
+      if (!dialog.open) {
+        opener = document.activeElement;
+        dialog.showModal();
+      }
       return true;
     };
   }
@@ -390,7 +437,6 @@
         <span class="iz-pills">${state && updating ? SYNC_PILL : ''}${pill}</span>
       </header>
       <main class="iz-main${layout}">${away ? `<p class="iz-alert" role="status">${AWAY_TEXT}</p>` : ''}${body}</main>
-      ${state?.started ? `<div class="iz-foot"><button class="iz-open" data-action="sheet-open" aria-haspopup="dialog">${ICONS.list}Fikstür ve puan durumu</button></div>` : ''}
     </div>`;
     }
 
@@ -410,13 +456,13 @@
     function watchTeam(m, side, flags) {
       const t = team(m[side]);
       const flag = m.goals.some((g) => g.team === t.id && flags.has(g.id)) ? `<span class="iz-goal-flag">${ICONS.ball}Gol</span>` : '';
-      return `<div class="iz-team" style="${teamStyle(t)}">
-        <div class="iz-team-l">
+      return `<button class="iz-team" style="${teamStyle(t)}" data-action="team" data-team="${t.id}">
+        <span class="iz-team-l">
           <span class="iz-tname"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>
           <span class="iz-scorers">${goalList(m, t.id)}</span>
-        </div>
+        </span>
         <span class="iz-score">${flag}<span class="iz-goals">${T.score(m)[side]}</span></span>
-      </div>`;
+      </button>`;
     }
 
     function watchLive(m, flags) {
@@ -513,47 +559,58 @@
       }
       const top = list[0].goals;
       const leaders = list.filter((s) => s.goals === top);
-      const sw = (s) => {
-        const t = team(s.team);
-        return t ? `<span class="sw" style="${teamStyle(t)}"></span>` : '<span class="is-tbd"><span class="sw"></span></span>';
-      };
       const lead =
         leaders
           .slice(0, 2)
-          .map((s) => `<span class="iz-kings-name">${sw(s)}<span class="tn-name">${esc(s.name)}</span></span>`)
+          .map((s) => `<span class="iz-kings-name">${scorerSwatch(s)}<span class="tn-name">${esc(s.name)}</span></span>`)
           .join('<span class="iz-kings-sep" aria-hidden="true">·</span>') + (leaders.length > 2 ? `<span class="iz-kings-more">+${leaders.length - 2}</span>` : '');
-      const rows = list
-        .map((s, i) => {
-          const rank = 1 + list.filter((x) => x.goals > s.goals).length;
-          const first = i === 0 || list[i - 1].goals !== s.goals;
-          return `<li${rank === 1 ? ' class="is-top"' : ''}><span class="iz-kings-rank">${first ? rank : ''}</span>${sw(s)}<span class="tn-name">${esc(s.name)}</span><strong>${s.goals}</strong></li>`;
-        })
-        .join('');
       return `<section class="iz-kings" aria-label="Gol krallığı">
         <button class="iz-kings-btn" data-action="scorers-toggle" aria-expanded="${open}" aria-controls="iz-kings-list">
           ${label}<span class="iz-kings-lead">${lead}<strong>${top} gol</strong>${ICONS.chevron}</span>
         </button>
-        <ol class="iz-kings-list" id="iz-kings-list"${open ? '' : ' hidden'}>${rows}</ol>
+        <ol class="iz-kings-list" id="iz-kings-list"${open ? '' : ' hidden'}>${scorerRows(list)}</ol>
       </section>`;
     }
 
-    function watchFixtures() {
+    function scorerSwatch(s) {
+      const t = team(s.team);
+      return t ? `<span class="sw" style="${teamStyle(t)}"></span>` : '<span class="is-tbd"><span class="sw"></span></span>';
+    }
+
+    function scorerRows(list, { withTeam = false } = {}) {
+      return list
+        .map((s, i) => {
+          const rank = 1 + list.filter((x) => x.goals > s.goals).length;
+          const first = i === 0 || list[i - 1].goals !== s.goals;
+          const teamLabel = withTeam && team(s.team) ? `<small>${esc(team(s.team).name)}</small>` : '';
+          return `<li${rank === 1 ? ' class="is-top"' : ''}><span class="iz-kings-rank">${first ? rank : ''}</span>${scorerSwatch(s)}<span class="tn-name">${esc(s.name)}${teamLabel}</span><strong>${s.goals}</strong></li>`;
+        })
+        .join('');
+    }
+
+    function watchFixtures({ links = false } = {}) {
       const state = getState();
       const est = estimates(state);
       const groups = fixtureGroups(state)
         .map((g) => ({ ...g, matches: g.matches.filter((m) => m.stage !== 'playoff' || state.settings.playoffEnabled) }))
         .filter((g) => g.matches.length);
+      if (links) {
+        return groups
+          .map((g) => `<section class="iz-card iz-fx-card" aria-label="${g.title}"><h2 class="iz-card-h">${g.title}</h2>${g.matches.map((m) => watchFixtureRow(m, est[m.id], true)).join('')}</section>`)
+          .join('');
+      }
       return `<div class="iz-fx">${groups
         .map((g) => `<section class="iz-fx-group" aria-label="${g.title}"><h3 class="iz-fx-title">${g.title}</h3>${g.matches.map((m) => watchFixtureRow(m, est[m.id])).join('')}</section>`)
         .join('')}</div>`;
     }
 
-    function watchFixtureRow(m, it) {
+    function watchFixtureRow(m, it, links = false) {
       const s = T.score(m);
       const w = T.winnerOf(m);
       const side = (k) => {
         const t = team(m[k]);
         const cls = !t ? ' is-tbd' : w ? (w === m[k] ? ' is-win' : ' is-lose') : '';
+        if (t && links) return `<button class="iz-fx-team iz-fx-${k}${cls}" data-action="team" data-team="${t.id}">${esc(t.name)}</button>`;
         return `<span class="iz-fx-team iz-fx-${k}${cls}">${t ? esc(t.name) : placeholder(m, k)}</span>`;
       };
       let time = it ? fmtTime(it.estStart) : '';
@@ -565,9 +622,172 @@
         time = fmtTime(m.startedAt);
         score = `${s.home}–${s.away}${m.pens ? `<small>pen. ${m.pens.home}–${m.pens.away}</small>` : ''}`;
       }
+      const scoreEl =
+        links && m.status === 'live'
+          ? `<button class="iz-fx-score" data-action="tab" data-tab="mac" aria-label="Canlı maça git">${score}</button>`
+          : `<span class="iz-fx-score">${score}</span>`;
       return `<div class="iz-fx-row is-${m.status}">
-        <span class="iz-fx-time">${time}</span>${side('home')}<span class="iz-fx-score">${score}</span>${side('away')}
+        <span class="iz-fx-time">${time}</span>${side('home')}${scoreEl}${side('away')}
       </div>`;
+    }
+
+    const TABS = [
+      ['mac', 'Maç', ICONS.tabMac, ICONS.tabMacOn],
+      ['fikstur', 'Fikstür', ICONS.tabFikstur, ICONS.tabFiksturOn],
+      ['puan', 'Puan', ICONS.tabPuan, ICONS.tabPuanOn],
+    ];
+
+    function renderTabBar(active) {
+      return TABS.map(
+        ([key, label, off, on]) => `<button class="iz-tab" role="tab" data-action="tab" data-tab="${key}" aria-selected="${key === active}">
+          <span class="iz-tab-pill">${off}${on}${key === 'mac' ? '<span class="iz-tab-dot" aria-hidden="true"></span>' : ''}</span>
+          <span class="iz-tab-label">${label}</span>${key === 'mac' ? '<span class="sr iz-tab-live">, canlı maç var</span>' : ''}
+        </button>`,
+      ).join('');
+    }
+
+    const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+
+    function pageHead(title, sub) {
+      return `<h1 class="iz-large">${title}</h1><p class="iz-large-sub">${sub}</p>`;
+    }
+
+    function renderFixturePage() {
+      const state = getState();
+      const n = T.activeMatches(state).length;
+      const sub = T.champion(state) ? `Turnuva bitti · ${n} maç` : `${n} maç · tahmini bitiş ${fmtTime(T.schedule(state).estEnd)}`;
+      return `${pageHead('Fikstür', sub)}<div class="iz-stack">${watchFixtures({ links: true })}</div>`;
+    }
+
+    function renderStandingsPage() {
+      const state = getState();
+      const { rows, unresolved } = T.computeStandings(state);
+      const zones = state.settings.playoffEnabled ? ['final', 'playoff', 'playoff'] : ['final', 'final', 'out'];
+      const done = T.leagueDone(state);
+      const tied = new Set(done ? unresolved.flat() : []);
+      const current = state.matches.find((m) => m.stage === 'league' && m.status !== 'done');
+      const sub = done ? 'Lig bitti' : state.settings.leagueRounds > 1 ? `Lig · ${current.round}. devre` : 'Lig sürüyor';
+      const body = rows
+        .map((r, i) => {
+          const t = team(r.team);
+          return `<button class="iz-st-row" data-action="team" data-team="${t.id}" aria-label="${esc(t.name)}, ${i + 1}. sıra, ${r.pts} puan">
+            <span><span class="rank rank-${zones[i]}">${i + 1}</span>${tied.has(r.team) ? '<span class="tie" title="Eşitlik henüz çözülmedi">=</span>' : ''}</span>
+            <span class="iz-st-tn" style="${teamStyle(t)}"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>
+            <span>${r.played}</span><span>${signed(r.gd)}</span><b>${r.pts}</b>${ICONS.forward}
+          </button>`;
+        })
+        .join('');
+      const liveLeague = liveMatch()?.stage === 'league';
+      const note = `${state.settings.playoffEnabled ? '1. finale direkt · 2. ve 3. playoff' : '1. ve 2. finalde'}${liveLeague ? ' · canlı maç anlık skorla dahil' : ''}`;
+      const { list } = T.topScorers(state);
+      const kings = list.length ? `<ol class="iz-kings-list">${scorerRows(list, { withTeam: true })}</ol>` : '<p class="iz-card-note">Henüz gol yok</p>';
+      return `${pageHead('Puan', sub)}<div class="iz-stack">
+        <section class="iz-card" aria-label="Puan durumu">
+          <h2 class="iz-card-h">Puan durumu</h2>
+          <div class="iz-st-head" aria-hidden="true"><span></span><span></span><span>O</span><span>Av</span><span>P</span><span></span></div>
+          ${body}
+          <p class="iz-card-note">${note}</p>
+        </section>
+        <section class="iz-card" aria-label="Gol krallığı"><h2 class="iz-card-h">Gol krallığı <small>gol</small></h2>${kings}</section>
+      </div>`;
+    }
+
+    function teamOutcome(id) {
+      const state = getState();
+      const champ = T.champion(state);
+      const fin = findStage('final');
+      const po = state.settings.playoffEnabled ? findStage('playoff') : null;
+      if (champ === id) return ['Şampiyon', `Final: ${lastResult(fin)}`];
+      if (champ && (fin.home === id || fin.away === id)) return ['Finalist', `Final: ${lastResult(fin)}`];
+      if (po?.status === 'done' && (po.home === id || po.away === id)) return ["Playoff'ta elendi", `Playoff: ${lastResult(po)}`];
+      return [champ ? 'Turnuva bitti' : 'Maçları bitti', ''];
+    }
+
+    function renderTeamPage(id) {
+      const state = getState();
+      const t = team(id);
+      if (!t) return '';
+      const { rows } = T.computeStandings(state);
+      const pos = rows.findIndex((r) => r.team === id);
+      const r = rows[pos];
+      const est = estimates(state);
+      const { list } = T.topScorers(state);
+      const top = list[0]?.goals;
+
+      const players = t.playerIds
+        .map(player)
+        .filter(Boolean)
+        .map((p, i) => ({ p, i, goals: list.find((s) => s.playerId === p.id)?.goals || 0 }))
+        .sort((a, b) => b.goals - a.goals || a.i - b.i)
+        .map(
+          ({ p, goals }) =>
+            `<li><span class="iz-pl-name">${esc(p.name)}</span>${goals && goals === top ? '<span class="iz-pl-tag">Gol kralı</span>' : '<span></span>'}<b${goals ? '' : ' class="is-zero"'}>${goals}</b></li>`,
+        );
+      const unnamed = state.matches
+        .filter((m) => m.status !== 'pending')
+        .reduce((n, m) => n + m.goals.filter((g) => g.team === id && !g.playerId).length, 0);
+      if (unnamed) players.push(`<li class="is-unnamed"><span class="iz-pl-name">Golcüsü bilinmeyen</span><span></span><b>${unnamed}</b></li>`);
+
+      const mine = T.activeMatches(state).filter((m) => m.home === id || m.away === id);
+      const games = mine
+        .map((m) => {
+          const opp = team(m.home === id ? m.away : m.home);
+          const s = T.score(m);
+          const us = m.home === id ? s.home : s.away;
+          const them = m.home === id ? s.away : s.home;
+          const w = m.status === 'done' ? T.winnerOf(m) : undefined;
+          let res = '<span></span>';
+          if (m.status === 'done') {
+            res =
+              w === id
+                ? '<span class="iz-res is-g" title="Galibiyet">G</span>'
+                : w
+                  ? '<span class="iz-res is-m" title="Mağlubiyet">M</span>'
+                  : '<span class="iz-res is-b" title="Beraberlik">B</span>';
+          }
+          const time = m.status === 'live' ? '<span class="tag-live">Canlı</span>' : m.status === 'done' ? fmtTime(m.startedAt) : fmtTime(est[m.id]?.estStart);
+          const score = m.status === 'pending' ? '–' : `${us}–${them}${m.pens ? '<small>pen.</small>' : ''}`;
+          return `<li class="is-${m.status}"><span class="iz-tm-time">${time}<small>${matchTitle(m)}</small></span><span class="iz-tm-opp" style="${teamStyle(opp)}"><span class="sw"></span><span class="tn-name">${esc(opp.name)}</span></span><span class="iz-tm-score">${score}</span>${res}</li>`;
+        })
+        .join('');
+      const elim = T.leagueDone(state)
+        ? ''
+        : `<li class="iz-tm-note">Eleme maçları lig bitince belli olur: ${state.settings.playoffEnabled ? "1. finale, 2. ve 3. playoff'a" : '1. ve 2. finale'}.</li>`;
+
+      const live = liveMatch();
+      const next = mine.find((m) => m.status === 'pending');
+      let now;
+      if (live && (live.home === id || live.away === id)) {
+        const s = T.score(live);
+        now = `<section class="iz-nx" aria-label="Şu an sahada">
+          <span class="iz-nx-label"><span class="tag-live">Canlı</span>Şu an sahada · ${matchTitle(live)}</span>
+          <span class="iz-nx-teams">${screenTeam(live, 'home')}<span>${s.home}–${s.away}</span>${screenTeam(live, 'away', true)}</span>
+          <span class="iz-nx-sub"><span data-timer></span> kalan</span>
+          <button class="iz-nx-go" data-action="tab" data-tab="mac">Maça git</button>
+        </section>`;
+      } else if (next) {
+        const it = est[next.id];
+        now = `<section class="iz-nx" aria-label="Sıradaki maç">
+          <span class="iz-nx-label">Sıradaki maç · tahmini başlama</span>
+          <strong class="iz-nx-big">${fmtTime(it?.estStart)}</strong>
+          <span class="iz-nx-teams">${screenTeam(next, 'home')}<span class="tv-dash">–</span>${screenTeam(next, 'away', true)}</span>
+          <span class="iz-nx-sub">${watchKicker(next)} · ${T.matchMinutes(state, next)} dk</span>
+        </section>`;
+      } else {
+        const [title, sub] = teamOutcome(id);
+        now = `<section class="iz-nx" aria-label="Turnuva"><span class="iz-nx-label">${T.champion(state) ? 'Turnuva bitti' : 'Bu takımın maçları'}</span><strong class="iz-nx-big">${title}</strong>${sub ? `<span class="iz-nx-sub">${sub}</span>` : ''}</section>`;
+      }
+
+      return `<div class="iz-th" style="${teamStyle(t)}"><span class="sw"></span><h1>${esc(t.name)}</h1></div>
+        <div class="iz-th-stats">
+          <div><b>${pos + 1}.</b><span>Lig sırası</span></div><div><b>${r.pts}</b><span>Puan</span></div>
+          <div><b>${r.played}</b><span>Maç</span></div><div><b>${signed(r.gd)}</b><span>Averaj</span></div>
+        </div>
+        <div class="iz-stack">${now}
+          <section class="iz-card" aria-label="Oyuncular"><h2 class="iz-card-h">Oyuncular <small>gol</small></h2><ol class="iz-pl">${players.join('')}</ol></section>
+          <section class="iz-card" aria-label="Maçlar"><h2 class="iz-card-h">Maçlar</h2><ol class="iz-tm">${games}${elim}</ol>
+            <p class="iz-card-note">G galibiyet · B beraberlik · M mağlubiyet · skor takımın gözünden</p></section>
+        </div>`;
     }
 
     function tickClocks(now = Date.now()) {
@@ -615,6 +835,10 @@
       renderScreen,
       renderWatch,
       renderSheet,
+      renderTabBar,
+      renderFixturePage,
+      renderStandingsPage,
+      renderTeamPage,
       tickClocks,
     };
   }
