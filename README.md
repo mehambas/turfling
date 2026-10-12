@@ -6,9 +6,13 @@ Build adımı yok; düz HTML/CSS/JS.
 ## Çalıştırma
 
 `index.html` dosyasına çift tıklamak yeterli. İnternet gerekmez; veriler tarayıcıda (localStorage) saklanır.
-Sayfa kapanıp açılsa da kaldığı yerden devam eder. Turnuva öncesinde ve sonrasında *Kurulum → Veri → Yedek indir* önerilir.
+Sayfa kapanıp açılsa da kaldığı yerden devam eder. Turnuva öncesinde ve sonrasında *Kurulum → Yedek → İndir* önerilir.
 
-İkinci bir pencerede (ör. projektör/TV) aynı sayfa açılırsa skorlar orada da anlık güncellenir.
+## Yayın ekranı (TV / projektör)
+
+Üst çubuktaki ekran simgesi `index.html#ekran` adresini yeni pencerede açar: büyük skor, süre ve sıradaki maç.
+Salt okunurdur; sağ üstteki *Fikstür* düğmesi fikstürü gösterir, yanındaki düğme tam ekrana geçirir.
+Aynı tarayıcıda açık olduğu sürece skorlar anlık güncellenir. Ses yalnızca yönetim ekranında çalar.
 
 ## Format (varsayılan)
 
@@ -24,7 +28,12 @@ Devre sayısı, maç süreleri, değişim ve ara süreleri *Kurulum* sekmesinden
 ## Kısayollar
 
 - `Boşluk`: canlı maçın saatini duraklat / devam ettir
-- `Esc`: golü atan seçimini kapat
+- `Esc`: golü atan panelini, açık menüleri ya da yayın ekranındaki fikstürü kapat
+
+## Yazı tipleri
+
+Barlow ve Barlow Condensed `fonts/` klasöründe (Latin + Latin-ext, woff2); internet gerekmez.
+Lisans: SIL Open Font License 1.1 (`fonts/OFL.txt`).
 
 ## Testler
 
