@@ -45,9 +45,35 @@ const isState = (s) =>
 
 const stub = (env, id) => env.TURNUVA.get(env.TURNUVA.idFromName(id));
 
+// İzleyici linkinin id'si hash'te; ana ekrana eklenen uygulama onu yalnız manifestteki başlangıç adresinden öğrenir.
+function watchManifest(id) {
+  const icon = (src, extra = {}) => ({ src, sizes: '512x512', type: 'image/png', ...extra });
+  const manifest = {
+    id: '/izle',
+    name: 'Halı Saha Canlı',
+    short_name: 'Halı Saha Canlı',
+    lang: 'tr',
+    start_url: ID_PATTERN.test(id || '') ? `/izle#${id}` : '/izle',
+    scope: '/izle',
+    display: 'standalone',
+    background_color: '#0a4d32',
+    theme_color: '#0a4d32',
+    icons: [
+      icon('/icons/izle-192.png', { sizes: '192x192' }),
+      icon('/icons/izle-512.png'),
+      icon('/icons/izle-maskable-512.png', { purpose: 'maskable' }),
+    ],
+  };
+  return new Response(JSON.stringify(manifest), {
+    headers: { 'content-type': 'application/manifest+json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
+    const { pathname, searchParams } = new URL(request.url);
+
+    if (pathname === '/izle.webmanifest') return watchManifest(searchParams.get('id'));
 
     if (pathname === '/api/t') {
       if (request.method !== 'POST') return fail('method_not_allowed', 405);

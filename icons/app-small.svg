@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Halı Saha — Halka (favicon)</title>
+  <rect width="512" height="512" rx="112" fill="#0A4D32"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#2C664F" stroke-width="64"/>
+  <path d="M256 106A150 150 0 1 1 126.1 181" fill="none" stroke="#B7F34A" stroke-width="64" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="72" fill="#B7F34A"/>
+</svg>

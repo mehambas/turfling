@@ -247,6 +247,24 @@ describe('statik dosyalar', () => {
     assert.equal((await fetch(`${base}/fonts/fonts.css`)).status, 200);
   });
 
+  test("izleyici manifesti yayının id'sini başlangıç adresine koyar", async () => {
+    const res = await fetch(`${base}/izle.webmanifest?id=abcdefghjk`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /application\/manifest\+json/);
+    const manifest = await res.json();
+    assert.equal(manifest.start_url, '/izle#abcdefghjk');
+    assert.equal(manifest.scope, '/izle');
+    assert.ok(manifest.icons.some((i) => i.purpose === 'maskable'));
+    assert.equal((await (await fetch(`${base}/izle.webmanifest?id=<script>`)).json()).start_url, '/izle');
+  });
+
+  test('organizatör manifesti ve ikonlar sunulur', async () => {
+    const manifest = await (await fetch(`${base}/manifest.webmanifest`)).json();
+    assert.equal(manifest.start_url, '/');
+    for (const icon of manifest.icons) assert.equal((await fetch(base + icon.src)).status, 200, icon.src);
+    assert.equal((await fetch(`${base}/icons/izle-180.png`)).status, 200);
+  });
+
   test('izleyici sayfası /izle adresinden açılır', async () => {
     const res = await fetch(`${base}/izle`);
     assert.equal(res.status, 200);

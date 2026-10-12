@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Halı Saha Canlı — Halka</title>
+  <rect width="512" height="512" fill="#0A4D32"/>
+  <circle cx="256" cy="256" r="164" fill="none" stroke="#2C664F" stroke-width="36"/>
+  <path d="M256 92A164 164 0 1 1 113.97 174" fill="none" stroke="#B7F34A" stroke-width="36" stroke-linecap="round"/>
+  <g transform="translate(256 256) scale(0.88)">
+    <clipPath id="top-ic"><circle r="90"/></clipPath>
+    <circle r="100" fill="#B7F34A"/>
+    <g fill="#0C2A1C" stroke="#0C2A1C" stroke-width="8" stroke-linejoin="round">
+      <path d="M0 -40 38.04 -12.36 23.51 32.36 -23.51 32.36 -38.04 -12.36Z"/>
+      <path d="M0 -70 -32.34 -93.49 -19.98 -131.51 19.98 -131.51 32.34 -93.49ZM66.57 -21.63 78.93 -59.64 118.89 -59.64 131.25 -21.63 98.91 1.86ZM41.14 56.63 81.11 56.63 93.47 94.64 61.13 118.14 28.79 94.64ZM-41.14 56.63 -28.79 94.64 -61.13 118.14 -93.47 94.64 -81.11 56.63ZM-66.57 -21.63 -98.91 1.86 -131.25 -21.63 -118.89 -59.64 -78.93 -59.64Z" clip-path="url(#top-ic)"/>
+    </g>
+    <path d="M0 -40L0 -70M38.04 -12.36L66.57 -21.63M23.51 32.36L41.14 56.63M-23.51 32.36L-41.14 56.63M-38.04 -12.36L-66.57 -21.63" stroke="#0C2A1C" stroke-width="9"/>
+  </g>
+  <g transform="translate(113.97 174)">
+    <circle r="46" fill="#0A4D32"/>
+    <circle r="36" fill="#FFFFFF"/>
+    <circle r="27" fill="#D92D3A"/>
+  </g>
+</svg>

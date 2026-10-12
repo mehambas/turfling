@@ -190,6 +190,8 @@
   const liveStatus = () => live?.status() ?? { mode: 'off' };
   const readOnly = () => liveStatus().mode === 'follower';
   const liveAvailable = () => /^https?:$/.test(location.protocol);
+  // iPhone'da ana ekrana eklenen uygulama Safari'nin kayıtlarını görmez; yayın orada boş görünür.
+  const installed = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 
   const READONLY_ACTIONS = new Set([
     'tab',
@@ -283,7 +285,15 @@
       body = '<p class="sc-hint">Canlı yayın, uygulama internetteki adresinden açıldığında kullanılabilir.</p>';
     } else if (s.mode === 'off') {
       body = `<p class="sc-hint">İzleyiciler skoru tek bir linkle kendi telefonlarından ya da TV'den canlı izler. Skoru bu cihaz girer.</p>
-        <div class="btn-row"><button class="btn btn-primary btn-sm" data-action="live-start">${ICONS.broadcast}Yayını başlat</button></div>`;
+        <div class="btn-row"><button class="btn btn-primary btn-sm" data-action="live-start">${ICONS.broadcast}Yayını başlat</button></div>
+        <details class="live-join"${installed() ? ' open' : ''}>
+          <summary>Başka cihazda başlatılan yayına bağlan</summary>
+          <p class="sc-hint">Yayını daha önce tarayıcıda ya da başka bir cihazda başlattıysan burada yeniden başlatma, izleyici linki değişir. Onun yerine yönetici linkini yapıştır: Kurulum → Canlı yayın → Yönetici linki → Kopyala.</p>
+          <div class="live-join-row">
+            <input class="input-pill" id="live-join-link" type="url" placeholder="Yönetici linki" autocomplete="off" aria-label="Yönetici linki">
+            <button class="btn btn-sm" data-action="live-join">Bağlan</button>
+          </div>
+        </details>`;
     } else {
       const links = liveLinks();
       const buttons = (key) =>
@@ -348,6 +358,10 @@
     if (!link) return;
     // Yönetici anahtarı adres çubuğunda, geçmişte ya da ekran paylaşımında görünmesin.
     history.replaceState(null, '', location.pathname + location.search);
+    joinLive(link);
+  }
+
+  async function joinLive(link) {
     if (!live) return toast('Canlı yayın bu adreste kullanılamıyor', 'warn');
     const c = live.config;
     if (c && c.id === link.id && c.token === link.token) return toast('Bu cihaz zaten yayına bağlı', 'ok');
@@ -1705,6 +1719,15 @@
       } catch {
         toast('Devralınamadı. İnternet bağlantısını kontrol edin.', 'warn');
       }
+    },
+
+    'live-join'() {
+      let link = null;
+      try {
+        link = LiveSync.parseAdminHash(new URL($('#live-join-link')?.value.trim() || '', location.origin).hash);
+      } catch {}
+      if (!link) return toast('Bu bir yönetici linki değil', 'warn');
+      joinLive(link);
     },
 
     'live-open'() {

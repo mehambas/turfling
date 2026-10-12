@@ -167,7 +167,13 @@
   window.addEventListener('online', () => chan?.wake());
   window.addEventListener('hashchange', () => location.reload());
 
-  if (id) readCache();
+  if (id) {
+    const manifest = document.createElement('link');
+    manifest.rel = 'manifest';
+    manifest.href = `/izle.webmanifest?id=${id}`;
+    document.head.append(manifest);
+    readCache();
+  }
   render();
   if (id) connect();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

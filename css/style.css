@@ -3780,6 +3780,37 @@ body.is-screen .live-bar {
   text-decoration: underline;
 }
 
+.live-join {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--sunken);
+}
+
+.live-join summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.live-join[open] summary {
+  margin-bottom: 8px;
+}
+
+.live-join-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.live-join-row .input-pill {
+  flex: 1;
+  min-width: 0;
+}
+
 .share-card .sc-foot {
   flex-wrap: wrap;
   align-items: center;
