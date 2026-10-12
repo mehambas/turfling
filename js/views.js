@@ -29,6 +29,8 @@
     `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 
   const ICONS = {
+    brand:
+      '<svg viewBox="0 0 512 512" aria-hidden="true"><circle cx="256" cy="256" r="150" fill="none" stroke="#2C664F" stroke-width="64"/><path d="M256 106A150 150 0 1 1 126.1 181" fill="none" stroke="#B7F34A" stroke-width="64" stroke-linecap="round"/><circle cx="256" cy="256" r="72" fill="#B7F34A"/></svg>',
     ball: svg('<circle cx="12" cy="12" r="9.5"/><path d="m12 7.5 4 2.9-1.5 4.7h-5L8 10.4z"/>'),
     soundOn: svg('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>'),
     soundOff: svg('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6M16 9l6 6"/>'),
@@ -299,7 +301,7 @@
       ${TV_LINES}
       <div class="tv-body">
         <header class="tv-head">
-          <div class="tv-brand"><span class="tv-mark">${ICONS.ball}</span><span class="tv-brand-name">${esc(tournamentName())}</span></div>
+          <div class="tv-brand"><span class="tv-mark">${ICONS.brand}</span><span class="tv-brand-name">${esc(tournamentName())}</span></div>
           <div class="tv-status">${live ? `<span class="tag-live">Canlı</span><span class="tv-no">${matchLabel(live)}</span>` : ''}</div>
           <div class="tv-tools">
             ${status}
@@ -388,7 +390,7 @@
       return `<div class="tv">
       ${TV_LINES}
       <div class="tv-body">
-        <header class="tv-head"><div class="tv-brand"><span class="tv-mark">${ICONS.ball}</span><span class="tv-brand-name">${DEFAULT_NAME}</span></div></header>
+        <header class="tv-head"><div class="tv-brand"><span class="tv-mark">${ICONS.brand}</span><span class="tv-brand-name">${DEFAULT_NAME}</span></div></header>
         <div class="tv-center">
           <span class="tv-kicker">${kicker}</span>
           <div class="tv-big">${title}</div>
@@ -433,7 +435,7 @@
       return `<div class="iz">
       <div class="iz-field" aria-hidden="true"><span class="iz-field-mid"></span><span class="iz-field-circle"></span><span class="iz-field-box"></span><span class="iz-field-box is-bottom"></span></div>
       <header class="iz-head">
-        <span class="iz-brand"><span class="iz-mark">${ICONS.ball}</span><span class="iz-brand-name">${esc(tournamentName())}</span></span>
+        <span class="iz-brand"><span class="iz-mark">${ICONS.brand}</span><span class="iz-brand-name">${esc(tournamentName())}</span></span>
         <span class="iz-pills">${state && updating ? SYNC_PILL : ''}${pill}</span>
       </header>
       <main class="iz-main${layout}">${away ? `<p class="iz-alert" role="status">${AWAY_TEXT}</p>` : ''}${body}</main>

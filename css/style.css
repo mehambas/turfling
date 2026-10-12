@@ -244,8 +244,10 @@ p {
   color: var(--lime);
 }
 
-.brand-mark svg {
-  stroke-width: 2.2;
+.brand-mark svg,
+.tv-mark svg {
+  width: 100%;
+  height: 100%;
 }
 
 .brand-title {

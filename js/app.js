@@ -1942,7 +1942,7 @@
     }
   }
 
-  $('.brand-mark').innerHTML = ICONS.ball;
+  $('.brand-mark').innerHTML = ICONS.brand;
   $('.tool-screen').innerHTML = ICONS.tv;
   T.resolveKnockouts(state);
   if (liveAvailable() && !isScreen()) {
