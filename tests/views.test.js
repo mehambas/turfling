@@ -87,6 +87,25 @@ test('izleyici telefonda canlı maç: skor, golcüler, süre halkası, sıradaki
   assert.match(V.renderWatch({ updating: true }), /Güncelleniyor…/);
 });
 
+test('izleyici telefonda: gol olunca bir dakika boyunca o takımın skorunun yanında "Gol" işareti', () => {
+  const s = setup();
+  const now = Date.now();
+  playFirst(s, now);
+  const m = s.matches[1];
+  T.startMatch(s, m, now - 5 * MIN);
+  goal(m, 'home', s, 2, now);
+  const V = viewer(s);
+  const rows = () => V.renderWatch().split('class="iz-team"').slice(1);
+  assert.deepEqual(rows().map((r) => r.includes('iz-goal-flag')), [false, false]);
+
+  goal(m, 'away', s, 4.5, now);
+  assert.deepEqual(rows().map((r) => r.includes('iz-goal-flag')), [false, true]);
+  assert.match(rows()[1], /iz-goal-flag[\s\S]*class="iz-goals">1</);
+
+  m.runningSince -= MIN;
+  assert.deepEqual(rows().map((r) => r.includes('iz-goal-flag')), [false, false]);
+});
+
 test('izleyici telefonda maç arası: tahmini başlama ve son maçın sonucu', () => {
   const s = setup();
   const now = Date.now();
@@ -119,7 +138,7 @@ test('fikstür ve puan penceresi: puan durumu, gol krallığı, fikstür; deği�
   assert.match(closed, /<ol class="iz-kings-list" id="iz-kings-list" hidden>/);
   assert.match(closed, new RegExp(`${playerName(s, first, 'home')}</span></span><strong>2 gol`));
   assert.match(closed, /Lig · 1\. devre[\s\S]*Lig · 2\. devre[\s\S]*Eleme/);
-  assert.match(closed, /iz-fx-row is-live[\s\S]*data-timer/);
+  assert.match(closed, /iz-fx-row is-live">\s*<span class="iz-fx-time"><span class="tag-live">Canlı<\/span>/);
   assert.match(closed, /Lig 2\.si/);
   assert.doesNotMatch(closed, /~/);
   assert.deepEqual([...actionsIn(closed)].sort(), ['scorers-toggle', 'sheet-close']);

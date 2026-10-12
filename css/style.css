@@ -3534,13 +3534,17 @@ body.is-screen .live-bar {
   color: #0a4d32;
 }
 
-.iz-fx-dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: #ff5a5f;
-  animation: pulse 1.4s infinite;
+.iz-fx-row .tag-live {
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.iz-fx-row .tag-live::before {
+  width: 5px;
+  height: 5px;
 }
 
 .is-wide .iz-dialog::backdrop {

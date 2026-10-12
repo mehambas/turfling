@@ -234,11 +234,55 @@ body.is-watch {
   display: none;
 }
 
+.iz-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .iz-goals {
   font-family: var(--font-cond);
   font-size: 104px;
   font-weight: 700;
   line-height: 0.85;
+}
+
+.iz-goal-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 11px 0 8px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: var(--lime-ink);
+  font-family: var(--font-cond);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  animation: iz-goal-pop 0.4s cubic-bezier(0.3, 1.6, 0.5, 1), iz-goal-ring 1.4s ease-out 0.4s 3;
+}
+
+.iz-goal-flag svg {
+  width: 18px;
+  height: 18px;
+}
+
+@keyframes iz-goal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes iz-goal-ring {
+  from {
+    box-shadow: 0 0 0 0 rgb(183 243 74 / 0.6);
+  }
+  to {
+    box-shadow: 0 0 0 12px rgb(183 243 74 / 0);
+  }
 }
 
 .iz-clock {

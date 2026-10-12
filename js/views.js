@@ -7,6 +7,7 @@
   const MINUTE = T.MINUTE;
   const DEFAULT_NAME = 'Halı Saha Turnuvası';
   const RING_LENGTH = 2 * Math.PI * 88;
+  const GOAL_FLAG_MS = MINUTE;
   const WIDE_QUERY = '(min-width: 761px) and (min-height: 500px) and (orientation: landscape)';
 
   const COLORS = {
@@ -407,14 +408,21 @@
       return `${matchTitle(m)} · Lig${getState().settings.leagueRounds > 1 ? ` ${m.round}. devre` : ''}`;
     }
 
+    // Alındığı an değil maç süresi esas: her cihazda aynı, sayfa yeniden açılınca da doğru.
+    function scoredJustNow(m, teamId) {
+      const times = m.goals.filter((g) => g.team === teamId && g.ms != null).map((g) => g.ms);
+      return times.length > 0 && T.elapsedMs(m) - Math.max(...times) < GOAL_FLAG_MS;
+    }
+
     function watchTeam(m, side) {
       const t = team(m[side]);
+      const flag = scoredJustNow(m, t.id) ? `<span class="iz-goal-flag">${ICONS.ball}Gol</span>` : '';
       return `<div class="iz-team" style="${teamStyle(t)}">
         <div class="iz-team-l">
           <span class="iz-tname"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>
           <span class="iz-scorers">${goalList(m, t.id)}</span>
         </div>
-        <span class="iz-goals">${T.score(m)[side]}</span>
+        <span class="iz-score">${flag}<span class="iz-goals">${T.score(m)[side]}</span></span>
       </div>`;
     }
 
@@ -558,7 +566,7 @@
       let time = it ? fmtTime(it.estStart) : '';
       let score = '–';
       if (m.status === 'live') {
-        time = '<span class="iz-fx-dot" aria-hidden="true"></span><span class="sr">Canlı, kalan </span><span data-timer></span>';
+        time = '<span class="tag-live">Canlı</span>';
         score = `${s.home}–${s.away}`;
       } else if (m.status === 'done') {
         time = fmtTime(m.startedAt);
