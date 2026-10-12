@@ -1,0 +1,14 @@
+name = "hali-saha"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = ".."
+
+[[durable_objects.bindings]]
+name = "TURNUVA"
+class_name = "Turnuva"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Turnuva"]
