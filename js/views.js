@@ -381,11 +381,11 @@
           <div class="tv-brand"><span class="tv-mark">${ICONS.brand}</span><span class="tv-brand-name">${esc(tournamentName())}</span></div>
           <div class="tv-status">${live ? `<span class="tag-live">Canlı</span><span class="tv-no">${matchLabel(live)}</span>` : ''}</div>
           <div class="tv-tools">
-            ${status}
             ${sc && !champ ? `<span class="tv-end">Bitiş <strong>${fmtTime(sc.estEnd)}</strong></span>` : ''}
             ${state.started ? `<button class="tv-btn" data-action="screen-fixtures" aria-haspopup="dialog">${ICONS.list}Fikstür</button>` : ''}
             <button class="tv-btn tv-icon" data-action="toggle-fullscreen" aria-label="${full ? 'Tam ekrandan çık' : 'Tam ekran'}" title="${full ? 'Tam ekrandan çık' : 'Tam ekran'}">${full ? ICONS.compress : ICONS.expand}</button>
           </div>
+          ${status ? `<div class="tv-alert">${status}</div>` : ''}
         </header>
         ${body}
         ${next ? screenNext(next, est) : ''}
