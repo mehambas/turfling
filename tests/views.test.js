@@ -412,3 +412,36 @@ test('takım sayfası: takım sahadaysa canlı skor ve "Maça git"', () => {
   assert.match(html, /<li class="is-live">/);
 });
 
+
+test('arma: renk noktasının yerine geçer; takım sayfasında büyük, listelerde küçük hâl', () => {
+  const s = setup();
+  const [a, b, c] = s.teams;
+  a.crest = 'krampon';
+  c.crest = 'eski-arma';
+  const small = Views.swatch(a);
+  assert.match(small, /^<span class="crest"><svg viewBox="0 0 64 64"/);
+  assert.match(small, /stroke-width="9"/);
+  assert.match(Views.swatch(a, { big: true }), /stroke-width="7"/);
+  assert.match(Views.swatch(a, { own: true }), /^<span class="crest" style="--team:/);
+  assert.equal(Views.swatch(b), '<span class="sw"></span>');
+  assert.equal(Views.swatch(c), '<span class="sw"></span>');
+
+  const v = viewer(s);
+  assert.ok(v.renderTeamPage(a.id).includes(`${Views.swatch(a, { big: true })}<h1>${a.name}</h1>`));
+  const table = v.renderStandingsPage();
+  assert.ok(table.includes(`${small}<span class="tn-name">${a.name}</span>`));
+  assert.ok(table.includes(`<span class="sw"></span><span class="tn-name">${b.name}</span>`));
+});
+
+test('arma kütüphanesi: her arma iki boyutta, yazısız, alan yelek renginde', () => {
+  const Crests = require('../js/crests.js');
+  assert.ok(Crests.LIST.length >= 3);
+  for (const c of Crests.LIST) {
+    for (const small of [true, false]) {
+      const svg = Crests.svg(c.id, { small });
+      assert.match(svg, /fill="currentColor"/, c.id);
+      assert.doesNotMatch(svg, /<text|<script|href=/, c.id);
+    }
+  }
+  assert.equal(Crests.svg('yok'), '');
+});

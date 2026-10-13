@@ -1,7 +1,7 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tournament.js'));
-  else root.Views = factory(root.Tournament);
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (T) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tournament.js'), require('./crests.js'));
+  else root.Views = factory(root.Tournament, root.Crests);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (T, Crests) {
   'use strict';
 
   const MINUTE = T.MINUTE;
@@ -89,6 +89,13 @@
     const hex = COLORS[key].hex;
     const btn = BUTTON_HEX[key] || hex;
     return `--team:${hex};--team-btn:${btn};--team-btn-ink:${inkFor(btn)}`;
+  }
+
+  // Arması olan takımda renk noktasının yerine arma; büyük hâl yalnız 40 px ve üstü için.
+  function swatch(t, { big = false, own = false } = {}) {
+    const style = own ? ` style="${teamStyle(t)}"` : '';
+    const crest = t?.crest ? Crests.svg(t.crest, { small: !big }) : '';
+    return crest ? `<span class="crest"${style}>${crest}</span>` : `<span class="sw"${style}></span>`;
   }
 
   function fmtClock(ms) {
@@ -287,7 +294,7 @@
       const t = team(id);
       const order = end ? ' is-end' : '';
       if (!t) return `<span class="tn is-tbd${order}"><span class="sw"></span><span class="tn-name">${m ? placeholder(m, side) : '?'}</span></span>`;
-      return `<span class="tn${order}${cls}" style="${teamStyle(t)}"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>`;
+      return `<span class="tn${order}${cls}" style="${teamStyle(t)}">${swatch(t)}<span class="tn-name">${esc(t.name)}</span></span>`;
     }
 
     function lastResult(m) {
@@ -389,7 +396,7 @@
     function screenTeam(m, side, end = false) {
       const t = team(m[side]);
       if (!t) return `<span class="tv-tn is-tbd${end ? ' is-end' : ''}"><span class="sw"></span>${placeholder(m, side)}</span>`;
-      return `<span class="tv-tn${end ? ' is-end' : ''}" style="${teamStyle(t)}"><span class="sw"></span>${esc(t.name)}</span>`;
+      return `<span class="tv-tn${end ? ' is-end' : ''}" style="${teamStyle(t)}">${swatch(t)}${esc(t.name)}</span>`;
     }
 
     function screenLive(m) {
@@ -397,7 +404,7 @@
       const home = team(m.home);
       const away = team(m.away);
       const side = (t, cls) => `<div class="tv-team ${cls}" style="${teamStyle(t)}">
-        <span class="tv-name"><span class="sw"></span><span>${esc(t.name)}</span></span>
+        <span class="tv-name">${swatch(t, { big: true })}<span>${esc(t.name)}</span></span>
         <span class="tv-scorers">${goalList(m, t.id)}</span>
       </div>`;
       return `<div class="tv-board">
@@ -433,7 +440,7 @@
       return `<div class="tv-center" style="${teamStyle(t)}">
       <span class="champ-icon tv-trophy">${ICONS.trophy}</span>
       <span class="tv-kicker">Şampiyon</span>
-      <div class="tv-big"><span class="tv-tn"><span class="sw"></span>${esc(t.name)}</span></div>
+      <div class="tv-big"><span class="tv-tn">${swatch(t, { big: true })}${esc(t.name)}</span></div>
       <span class="tv-sub">Final: ${lastResult(fin)}</span>
       <div class="champ-players tv-players">${players}</div>
       ${best.length ? `<span class="tv-last">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</span>` : ''}
@@ -459,7 +466,7 @@
       const list = rosterTeams();
       if (!list.length) return '';
       const tiles = list.map(
-        (t) => `<li class="tv-team" style="${teamStyle(t)}"><span class="tv-team-name"><span class="sw"></span>${esc(t.name)}</span><span class="tv-team-players">${playerNames(t)}</span></li>`,
+        (t) => `<li class="tv-team-card" style="${teamStyle(t)}"><span class="tv-team-name">${swatch(t)}${esc(t.name)}</span><span class="tv-team-players">${playerNames(t)}</span></li>`,
       );
       return `<section class="tv-teams" aria-labelledby="tv-teams-h"><h2 class="tv-rules-h" id="tv-teams-h">Takımlar</h2><ul class="tv-team-list">${tiles.join('')}</ul></section>`;
     }
@@ -535,7 +542,7 @@
       const list = rosterTeams();
       if (!list.length) return '';
       const rows = list.map((t) => {
-        const inner = `<span class="iz-tl-name"><span class="sw"></span>${esc(t.name)}</span><span class="iz-tl-players">${playerNames(t)}</span>`;
+        const inner = `<span class="iz-tl-name">${swatch(t)}${esc(t.name)}</span><span class="iz-tl-players">${playerNames(t)}</span>`;
         return links
           ? `<button class="iz-tl-row" data-action="team" data-team="${t.id}" style="${teamStyle(t)}">${inner}${ICONS.forward}</button>`
           : `<div class="iz-tl-row" style="${teamStyle(t)}">${inner}</div>`;
@@ -561,7 +568,7 @@
       const flag = m.goals.some((g) => g.team === t.id && flags.has(g.id)) ? `<span class="iz-goal-flag">${ICONS.ball}Gol</span>` : '';
       return `<button class="iz-team" style="${teamStyle(t)}" data-action="team" data-team="${t.id}">
         <span class="iz-team-l">
-          <span class="iz-tname"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>
+          <span class="iz-tname">${swatch(t)}<span class="tn-name">${esc(t.name)}</span></span>
           <span class="iz-scorers">${goalList(m, t.id)}</span>
         </span>
         <span class="iz-score">${flag}<span class="iz-goals">${T.score(m)[side]}</span></span>
@@ -611,7 +618,7 @@
       const side = (k) => {
         const t = team(m[k]);
         const cls = `${k === 'home' ? ' is-end' : ''}${w && w !== m[k] ? ' is-lose' : ''}`;
-        return `<span class="tv-tn${cls}" style="${teamStyle(t)}"><span class="sw"></span>${esc(t?.name)}</span>`;
+        return `<span class="tv-tn${cls}" style="${teamStyle(t)}">${swatch(t)}${esc(t?.name)}</span>`;
       };
       const goals = goalList(m);
       return `<section class="iz-last" aria-label="Son maç">
@@ -627,7 +634,7 @@
       return `<div class="iz-hero" style="${teamStyle(t)}">
         <span class="champ-icon">${ICONS.trophy}</span>
         <span class="iz-hero-kicker">Şampiyon</span>
-        <h1 class="iz-hero-title iz-champ"><span class="sw"></span>${esc(t.name)}</h1>
+        <h1 class="iz-hero-title iz-champ">${swatch(t, { big: true })}${esc(t.name)}</h1>
         <p class="iz-hero-sub">Final: ${lastResult(fin)}</p>
         <div class="champ-players">${players}</div>
         ${best.length ? `<p class="iz-hero-note">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</p>` : ''}
@@ -720,7 +727,7 @@
 
     function scorerSwatch(s) {
       const t = team(s.team);
-      return t ? `<span class="sw" style="${teamStyle(t)}"></span>` : '<span class="is-tbd"><span class="sw"></span></span>';
+      return t ? swatch(t, { own: true }) : '<span class="is-tbd"><span class="sw"></span></span>';
     }
 
     function scorerRows(list, { withTeam = false } = {}) {
@@ -818,7 +825,7 @@
           const t = team(r.team);
           return `<button class="iz-st-row" data-action="team" data-team="${t.id}" aria-label="${esc(t.name)}, ${i + 1}. sıra, ${r.pts} puan">
             <span><span class="rank rank-${zones[i]}">${i + 1}</span>${tied.has(r.team) ? '<span class="tie" title="Eşitlik henüz çözülmedi">=</span>' : ''}</span>
-            <span class="iz-st-tn" style="${teamStyle(t)}"><span class="sw"></span><span class="tn-name">${esc(t.name)}</span></span>
+            <span class="iz-st-tn" style="${teamStyle(t)}">${swatch(t)}<span class="tn-name">${esc(t.name)}</span></span>
             <span>${r.played}</span><span>${signed(r.gd)}</span><b>${r.pts}</b>${ICONS.forward}
           </button>`;
         })
@@ -893,7 +900,7 @@
           }
           const time = m.status === 'live' ? '<span class="tag-live">Canlı</span>' : m.status === 'done' ? fmtTime(m.startedAt) : fmtTime(est[m.id]?.estStart);
           const score = m.status === 'pending' ? '–' : `${us}–${them}${m.pens ? '<small>pen.</small>' : ''}`;
-          return `<li class="is-${m.status}"><span class="iz-tm-time">${time}<small>${matchTitle(m)}</small></span><span class="iz-tm-opp" style="${teamStyle(opp)}"><span class="sw"></span><span class="tn-name">${esc(opp.name)}</span></span><span class="iz-tm-score">${score}</span>${res}</li>`;
+          return `<li class="is-${m.status}"><span class="iz-tm-time">${time}<small>${matchTitle(m)}</small></span><span class="iz-tm-opp" style="${teamStyle(opp)}">${swatch(opp)}<span class="tn-name">${esc(opp.name)}</span></span><span class="iz-tm-score">${score}</span>${res}</li>`;
         })
         .join('');
       const elim = T.leagueDone(state)
@@ -924,7 +931,7 @@
         now = `<section class="iz-nx" aria-label="Turnuva"><span class="iz-nx-label">${T.champion(state) ? 'Turnuva bitti' : 'Bu takımın maçları'}</span><strong class="iz-nx-big">${title}</strong>${sub ? `<span class="iz-nx-sub">${sub}</span>` : ''}</section>`;
       }
 
-      return `<div class="iz-th" style="${teamStyle(t)}"><span class="sw"></span><h1>${esc(t.name)}</h1></div>
+      return `<div class="iz-th" style="${teamStyle(t)}">${swatch(t, { big: true })}<h1>${esc(t.name)}</h1></div>
         <div class="iz-th-stats">
           <div><b>${pos + 1}.</b><span>Lig sırası</span></div><div><b>${r.pts}</b><span>Puan</span></div>
           <div><b>${r.played}</b><span>Maç</span></div><div><b>${signed(r.gd)}</b><span>Averaj</span></div>
@@ -989,5 +996,5 @@
     };
   }
 
-  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, startText, rulesText, toggleRules, keepAwake, sheetView, create };
+  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, swatch, fmtClock, fmtTime, goalMinute, startText, rulesText, toggleRules, keepAwake, sheetView, create };
 });

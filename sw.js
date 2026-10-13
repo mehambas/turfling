@@ -12,6 +12,7 @@ const ASSETS = [
   '/css/izle.css',
   '/js/tournament.js',
   '/js/sync.js',
+  '/js/crests.js',
   '/js/views.js',
   '/js/app.js',
   '/js/izle.js',

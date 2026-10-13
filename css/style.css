@@ -187,6 +187,22 @@ p {
   box-shadow: inset 0 0 0 1.5px var(--faint);
 }
 
+.crest {
+  display: inline-block;
+  flex: none;
+  width: 1.4em;
+  height: 1.4em;
+  margin: -0.2em 0;
+  color: var(--team);
+  vertical-align: middle;
+}
+
+.crest svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .tn {
   display: inline-flex;
   align-items: center;
@@ -2164,7 +2180,13 @@ p {
   height: 24px;
 }
 
-.tc-color svg {
+.tc-color .crest {
+  width: 28px;
+  height: 28px;
+  margin: 0;
+}
+
+.tc-color > svg {
   width: 14px;
   height: 14px;
   stroke-width: 2.6;
@@ -2182,10 +2204,59 @@ p {
 .pop-colors {
   top: 44px;
   right: -2px;
-  width: 220px;
+  width: 236px;
+}
+
+.pop-color-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
+}
+
+.pop-colors .pop-label {
+  display: block;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ring);
+}
+
+.pop-crests {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.pop-crest {
+  display: grid;
+  place-items: center;
+  height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+}
+
+.pop-crest:hover:not(.is-taken) {
+  background: var(--sunken);
+}
+
+.pop-crest.is-on {
+  background: var(--pitch-soft);
+  box-shadow: inset 0 0 0 2px var(--pitch);
+}
+
+.pop-crest.is-taken {
+  opacity: 0.35;
+}
+
+.pop-crest .crest {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+}
+
+.pop-crest .sw {
+  width: 16px;
+  height: 16px;
 }
 
 .pop-color {
@@ -3045,6 +3116,12 @@ body.is-screen .live-bar {
   box-shadow: 0 0 0 4px rgb(255 255 255 / 0.18);
 }
 
+.tv-name .crest {
+  width: 1.1em;
+  height: 1.1em;
+  margin: 0;
+}
+
 .tv-scorers {
   font-size: min(1.9vw, 3.4vh);
   color: rgb(255 255 255 / 0.75);
@@ -3150,6 +3227,11 @@ body.is-screen .live-bar {
 
 .tv-tn.is-tbd {
   color: rgb(255 255 255 / 0.6);
+}
+
+.tv-tn .crest {
+  width: 1.1em;
+  height: 1.1em;
 }
 
 .tv-tn.is-tbd .sw {
@@ -3289,7 +3371,7 @@ body.is-screen .live-bar {
   gap: min(1.2vw, 2.1vh);
 }
 
-.tv-team {
+.tv-team-card {
   flex: 0 1 min(28vw, 50vh);
   display: flex;
   flex-direction: column;
@@ -3539,14 +3621,14 @@ body.is-screen .live-bar {
   color: var(--pitch-ink);
 }
 
-.iz-kings-lead svg {
+.iz-kings-lead > svg {
   width: 16px;
   height: 16px;
   color: var(--ink-2);
   transition: transform 0.2s;
 }
 
-.iz-kings-btn[aria-expanded="true"] svg {
+.iz-kings-btn[aria-expanded="true"] .iz-kings-lead > svg {
   transform: rotate(180deg);
 }
 
@@ -3563,7 +3645,7 @@ body.is-screen .live-bar {
 
 .iz-kings-list li {
   display: grid;
-  grid-template-columns: 22px 10px minmax(0, 1fr) auto;
+  grid-template-columns: 22px auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 36px;

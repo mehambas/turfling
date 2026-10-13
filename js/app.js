@@ -6,7 +6,7 @@
   const PREFS_KEY = 'halisaha-turnuva-prefs';
   const MINUTE = T.MINUTE;
 
-  const { COLORS, ICONS, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, keepAwake } = Views;
+  const { COLORS, ICONS, esc, clamp, teamStyle, swatch, fmtClock, fmtTime, goalMinute, keepAwake } = Views;
 
   const PITCH_LINES =
     '<svg class="pitch-lines wide-only" viewBox="0 0 800 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><line x1="400" y1="0" x2="400" y2="520"/><circle cx="400" cy="260" r="86"/><circle class="spot" cx="400" cy="260" r="4"/><rect x="-2" y="150" width="96" height="220"/><rect x="706" y="150" width="96" height="220"/></svg>' +
@@ -102,7 +102,7 @@
   const minuteOf = (ts) => Math.floor(ts / MINUTE);
 
   function restingHtml(m) {
-    const tag = (label, t) => `${label} <span class="sw" style="${teamStyle(t)}"></span><strong>${esc(t.name)}</strong>`;
+    const tag = (label, t) => `${label} ${swatch(t, { own: true })}<strong>${esc(t.name)}</strong>`;
     if (m.stage === 'league') {
       const t = team(T.TEAM_IDS.find((x) => x !== m.home && x !== m.away));
       return t ? tag('Dinlenen', t) : '';
@@ -475,7 +475,7 @@
   function liveTeam(m, t, side) {
     const goals = m.goals.filter((g) => g.team === t.id);
     return `<div class="lc-team lc-${side}" style="${teamStyle(t)}">
-      <span class="lc-name"><span class="sw"></span><span class="lc-name-text">${esc(t.name)}</span></span>
+      <span class="lc-name">${swatch(t)}<span class="lc-name-text">${esc(t.name)}</span></span>
       ${goals.length ? `<div class="lc-chips wide-only">${goals.map((g) => goalChip(g, false)).join('')}</div>` : ''}
     </div>`;
   }
@@ -535,7 +535,7 @@
     const h = team(m.home);
     const a = team(m.away);
     const field = (t, id) =>
-      `<label style="${teamStyle(t)}"><span class="sw"></span>${esc(t.name)}<input class="input-num" id="${id}" type="number" min="0" max="30" inputmode="numeric"></label>`;
+      `<label style="${teamStyle(t)}">${swatch(t)}${esc(t.name)}<input class="input-num" id="${id}" type="number" min="0" max="30" inputmode="numeric"></label>`;
     return `<div class="pens">
       <strong>Maç berabere bitti: penaltı sonucunu girin</strong>
       <div class="pens-row">${field(h, 'pens-home')}${field(a, 'pens-away')}</div>
@@ -595,7 +595,7 @@
       <div class="pc-body">
         <span class="champ-icon">${ICONS.trophy}</span>
         <span class="champ-kicker">Şampiyon</span>
-        <h1 class="champ-name"><span class="sw"></span>${esc(t.name)}</h1>
+        <h1 class="champ-name">${swatch(t, { big: true })}${esc(t.name)}</h1>
         <p class="champ-line">Final: ${lastResult(fin)}</p>
         <div class="champ-players">${players}</div>
         ${best.length ? `<p class="champ-line">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</p>` : ''}
@@ -632,7 +632,7 @@
     const rows = shown.map((s) => {
       const t = team(s.team);
       const tag = t ? `class="tn" style="${teamStyle(t)}"` : 'class="tn is-tbd"';
-      return `<li><span ${tag}><span class="sw"></span><span class="tn-name">${esc(s.name)}</span></span><strong>${s.goals}</strong></li>`;
+      return `<li><span ${tag}>${swatch(t)}<span class="tn-name">${esc(s.name)}</span></span><strong>${s.goals}</strong></li>`;
     });
     return `<section class="card side-card" aria-labelledby="h-scorers">
       <h2 class="card-title" id="h-scorers">Gol krallığı</h2>
@@ -834,7 +834,7 @@
       <p class="sc-hint">${
         state.started
           ? 'Turnuva sürüyor. Gerekirse (ör. sakatlıkta) oyuncuyu adının yanındaki oklarla başka takıma alabilirsiniz.'
-          : 'Oyuncuyu başka takıma almak için adının yanındaki oklara dokunun. Başka takımın kullandığı renk seçilemez.'
+          : 'Oyuncuyu başka takıma almak için adının yanındaki oklara dokunun. Başka takımın kullandığı renk ya da arma seçilemez.'
       }</p>
     </section>`;
   }
@@ -843,10 +843,11 @@
     const players = t.playerIds.map(player).filter(Boolean);
     const open = ui.colorMenu === t.id;
     const c = COLORS[t.color] || COLORS.red;
+    const crest = Crests.byId(t.crest);
     return `<div class="tc" style="${teamStyle(t)}">
       <div class="tc-head">
         <input class="tc-name" data-field="team-name" data-team="${t.id}" value="${esc(t.name)}" maxlength="24" aria-label="Takım adı">
-        <button class="tc-color${open ? ' is-open' : ''}" data-action="color-menu" data-team="${t.id}" data-popover aria-haspopup="listbox" aria-expanded="${open}" aria-label="Yelek rengi: ${c.label}, değiştir" title="Yelek rengi"><span class="sw"></span>${ICONS.chevron}</button>
+        <button class="tc-color${open ? ' is-open' : ''}" data-action="color-menu" data-team="${t.id}" data-popover aria-haspopup="true" aria-expanded="${open}" aria-label="Yelek rengi: ${c.label}${crest ? `, arma: ${crest.label}` : ''}, değiştir" title="Yelek rengi ve arma">${swatch(t)}${ICONS.chevron}</button>
         ${open ? colorMenu(t) : ''}
       </div>
       <ol class="tc-players">${players.map((p, i) => teamPlayer(p, t, i, teamIndex)).join('') || '<li class="tc-empty">Kura bekleniyor</li>'}</ol>
@@ -854,14 +855,24 @@
   }
 
   function colorMenu(t) {
-    return `<div class="pop pop-colors" role="listbox" aria-label="Yelek rengi" data-popover>${Object.entries(COLORS)
-      .map(([key, c]) => {
-        const owner = state.teams.find((o) => o !== t && o.color === key);
-        const on = t.color === key;
-        const extra = owner ? ` aria-disabled="true" title="${esc(owner.name)} kullanıyor"` : ` title="${c.label}"`;
-        return `<button class="pop-color${on ? ' is-on' : ''}${owner ? ' is-taken' : ''}" role="option" aria-selected="${on}" data-action="team-color" data-team="${t.id}" data-color="${key}" style="--sw:${c.hex}"${extra}><span class="sw"></span>${c.label}</button>`;
-      })
-      .join('')}</div>`;
+    const colors = Object.entries(COLORS).map(([key, c]) => {
+      const owner = state.teams.find((o) => o !== t && o.color === key);
+      const on = t.color === key;
+      const extra = owner ? ` aria-disabled="true" title="${esc(owner.name)} kullanıyor"` : ` title="${c.label}"`;
+      return `<button class="pop-color${on ? ' is-on' : ''}${owner ? ' is-taken' : ''}" role="option" aria-selected="${on}" data-action="team-color" data-team="${t.id}" data-color="${key}" style="--sw:${c.hex}"${extra}><span class="sw"></span>${c.label}</button>`;
+    });
+    const crests = [{ id: '', label: 'Arma yok' }, ...Crests.LIST].map((c) => {
+      const owner = c.id && state.teams.find((o) => o !== t && o.crest === c.id);
+      const on = (t.crest || '') === c.id;
+      const extra = owner ? ` aria-disabled="true" title="${esc(owner.name)} kullanıyor"` : ` title="${c.label}"`;
+      const icon = c.id ? `<span class="crest">${Crests.svg(c.id)}</span>` : '<span class="sw"></span>';
+      return `<button class="pop-crest${on ? ' is-on' : ''}${owner ? ' is-taken' : ''}" role="option" aria-selected="${on}" aria-label="${c.label}" data-action="team-crest" data-team="${t.id}" data-crest="${c.id}"${extra}>${icon}</button>`;
+    });
+    return `<div class="pop pop-colors" data-popover>
+      <div class="pop-color-list" role="listbox" aria-label="Yelek rengi">${colors.join('')}</div>
+      <span class="pop-label" id="crest-label-${t.id}">Arma</span>
+      <div class="pop-crests" role="listbox" aria-labelledby="crest-label-${t.id}">${crests.join('')}</div>
+    </div>`;
   }
 
   function teamPlayer(p, t, i, teamIndex) {
@@ -869,7 +880,7 @@
     const others = state.teams.filter((x) => x !== t);
     const menu = open
       ? `<div class="pop pop-move" role="menu" aria-label="Takım değiştir" data-popover><span class="pop-label">Takım değiştir</span>${others
-          .map((o) => `<button class="pop-item" role="menuitem" data-action="move-player" data-id="${p.id}" data-team="${o.id}" style="${teamStyle(o)}"><span class="sw"></span>${esc(o.name)}</button>`)
+          .map((o) => `<button class="pop-item" role="menuitem" data-action="move-player" data-id="${p.id}" data-team="${o.id}" style="${teamStyle(o)}">${swatch(o)}${esc(o.name)}</button>`)
           .join('')}</div>`
       : '';
     return `<li class="tc-player${ui.revealDraw ? ' reveal' : ''}" style="--i:${i * 3 + teamIndex}">
@@ -1081,7 +1092,7 @@
     return `<div class="dialog-body goal-dialog" style="${teamStyle(t)}">
       <div>
         <span class="gd-meta">${goalMinute(dialog.opts)} · ${s.home}–${s.away}</span>
-        <h2><span class="sw"></span>${esc(t.name)} golü</h2>
+        <h2>${swatch(t)}${esc(t.name)} golü</h2>
       </div>
       <span class="gd-label">Kim attı?</span>
       <div class="pk-players" role="group" aria-label="Golü atan">
@@ -1398,6 +1409,16 @@
       commit(() => {
         if (t.name === COLORS[t.color]?.plural) t.name = COLORS[el.dataset.color].plural;
         t.color = el.dataset.color;
+      });
+    },
+
+    'team-crest'(el) {
+      const t = team(el.dataset.team);
+      if (!t) return;
+      ui.colorMenu = null;
+      commit(() => {
+        if (el.dataset.crest) t.crest = el.dataset.crest;
+        else delete t.crest;
       });
     },
 
