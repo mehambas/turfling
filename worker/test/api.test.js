@@ -280,3 +280,12 @@ describe('statik dosyalar', () => {
     }
   });
 });
+
+describe('gol bildirimi anahtarsız', () => {
+  test('VAPID anahtarı yoksa bildirim kapalıdır', async () => {
+    assert.equal((await api('/api/push-key')).status, 404);
+    const t = await createTournament();
+    const res = await api(`/api/t/${t.id}/push`, { method: 'POST', body: { endpoint: 'https://web.push.apple.com/x', keys: {} } });
+    assert.deepEqual([res.status, res.data.error], [404, 'push_disabled']);
+  });
+});

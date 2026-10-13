@@ -9,6 +9,15 @@
   // Tahmini saatler zamanla kayar; yayına yeni bir şey gelmese de ekran tazelenir.
   const REFRESH_MS = 15000;
   const GOAL_FLAG_MS = 5000;
+  const PUSH_PREFIX = 'halisaha-bildirim-';
+  const TOAST_MS = 4000;
+  const PUSH_TEXT = {
+    install: 'Bildirim için önce Paylaş → Ana Ekrana Ekle ile uygulamayı ekleyin, sonra ana ekrandan açın.',
+    denied: 'Bildirim izni verilmedi. Telefonun ayarlarından açabilirsiniz.',
+    on: 'Gol bildirimleri açık',
+    off: 'Gol bildirimleri kapalı',
+    failed: 'Bildirim ayarı değişmedi. İnternet bağlantısını kontrol edip tekrar deneyin.',
+  };
   const TABS = { mac: 'Maç', fikstur: 'Fikstür', puan: 'Puan' };
   const EASE = 'cubic-bezier(0.2, 0, 0, 1)';
   const EASE_PUSH = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -28,6 +37,9 @@
   let viewHtml = '';
   let seenGoals = null;
   const flags = new Set();
+  const push = { key: null, reg: null, on: false, busy: false };
+  // iPhone'da push yalnız ana ekrana eklenmiş uygulamada var; Safari'deki zil bunu anlatır.
+  const needsInstall = navigator.standalone === false;
   const ui = { sheet: false, scorersOpen: false, rulesOpen: false, tab: 'mac' };
   const V = Views.create(() => state);
   const showSheet = Views.sheetView(sheet, {
@@ -122,7 +134,8 @@
     document.body.classList.toggle('is-screen', wide);
     document.body.classList.toggle('is-tabs', tabs);
     document.title = state ? `${V.tournamentName()} · Canlı` : 'Halı Saha Turnuvası · Canlı';
-    const opts = { wide, notice, updating: !connected, organizerAway: !organizerOnline, full: !!document.fullscreenElement, flags };
+    const bell = !push.key ? null : needsInstall ? 'off' : push.reg ? (push.on ? 'on' : 'off') : null;
+    const opts = { wide, notice, updating: !connected, organizerAway: !organizerOnline, full: !!document.fullscreenElement, flags, bell };
     if (tabs) {
       ui.sheet = false;
       renderTabs(opts);
@@ -358,6 +371,86 @@
     true,
   );
 
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
+  document.body.append(toast);
+  let toastTimer = 0;
+
+  function say(message) {
+    toast.textContent = message;
+    toast.classList.add('is-shown');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('is-shown'), TOAST_MS);
+  }
+
+  const fromB64url = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+
+  function pushWanted() {
+    try {
+      return localStorage.getItem(PUSH_PREFIX + id) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function savePush(on) {
+    try {
+      if (on) localStorage.setItem(PUSH_PREFIX + id, '1');
+      else localStorage.removeItem(PUSH_PREFIX + id);
+    } catch {}
+  }
+
+  async function pushRequest(method, body) {
+    const res = await fetch(`/api/t/${id}/push`, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`push ${res.status}`);
+  }
+
+  async function initPush() {
+    if (!id || !('serviceWorker' in navigator)) return;
+    try {
+      const res = await fetch('/api/push-key', { cache: 'no-store' });
+      if (!res.ok) return;
+      push.key = fromB64url((await res.json()).key);
+      if (!needsInstall && 'PushManager' in window) {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        push.on = !!sub && pushWanted() && window.Notification?.permission === 'granted';
+        push.reg = reg;
+        // Push servisi aboneliği yenilemiş ya da sunucu kaydı kaybetmiş olabilir; her açılışta güncel abonelik gönderilir.
+        if (push.on) pushRequest('POST', sub).catch(() => {});
+      }
+      render();
+    } catch {}
+  }
+
+  async function togglePush() {
+    if (needsInstall) return say(PUSH_TEXT.install);
+    if (!push.reg || push.busy) return;
+    push.busy = true;
+    try {
+      if (push.on) {
+        const sub = await push.reg.pushManager.getSubscription();
+        if (sub) await pushRequest('DELETE', { endpoint: sub.endpoint });
+      } else {
+        // iOS izni yalnız dokunuşun hemen ardından sorar; izin isteğinden önce başka bir bekleme olmamalı.
+        if ((await Notification.requestPermission()) !== 'granted') return say(PUSH_TEXT.denied);
+        const pm = push.reg.pushManager;
+        const sub = (await pm.getSubscription()) || (await pm.subscribe({ userVisibleOnly: true, applicationServerKey: push.key }));
+        await pushRequest('POST', sub);
+      }
+      push.on = !push.on;
+      savePush(push.on);
+      say(push.on ? PUSH_TEXT.on : PUSH_TEXT.off);
+      render();
+    } catch {
+      say(PUSH_TEXT.failed);
+    } finally {
+      push.busy = false;
+    }
+  }
+
   const actions = {
     'screen-fixtures'() {
       ui.sheet = true;
@@ -384,6 +477,7 @@
     back() {
       if (teams[ui.tab]) back(ui.tab);
     },
+    'push-toggle': togglePush,
   };
 
   document.addEventListener('click', (e) => {
@@ -429,6 +523,7 @@
   render();
   if (id) connect();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  initPush();
   setInterval(() => V.tickClocks(), 250);
   setInterval(render, REFRESH_MS);
 })();

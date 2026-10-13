@@ -47,3 +47,26 @@ Statik site olduğu için Cloudflare Pages'e klasör olduğu gibi yüklenebilir
 (dashboard'dan sürükle-bırak ya da `npx wrangler pages deploy .`).
 Not: Veriler her cihazın kendi tarayıcısında tutulur; yayınlanan sürümde herkes kendi kopyasını görür.
 Herkesin aynı canlı skoru görmesi için ortak bir veri katmanı eklemek gerekir.
+
+## Gol bildirimi
+
+İzleyici sayfasındaki zil, o yayının gollerini telefona bildirim olarak gönderir; bildirim telefonun kendi titreşimi ve sesiyle gelir.
+iPhone'da yalnız ana ekrana eklenmiş uygulamada çalışır (iOS 16.4+); Safari'de zile dokununca bu anlatılır.
+
+Worker bir kez VAPID anahtarı ister; anahtar yoksa zil görünmez:
+
+```sh
+cd worker
+node vapid-key.js | npx wrangler secret put VAPID_KEY
+```
+
+Yerelde (`npm run dev`) denemek için: `printf 'VAPID_KEY=%s\n' "$(node vapid-key.js)" > .dev.vars`
+
+Canlı turnuvaya dokunmadan denemek için aynı kod ayrı bir Worker olarak yayınlanabilir.
+Adresi, turnuvaları ve tarayıcıdaki kayıtları canlı sürümden tamamen ayrıdır:
+
+```sh
+cd worker
+npx wrangler deploy --name hali-saha-test
+node vapid-key.js | npx wrangler secret put VAPID_KEY --name hali-saha-test
+```

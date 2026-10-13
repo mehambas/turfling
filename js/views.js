@@ -34,6 +34,8 @@
     ball: svg('<circle cx="12" cy="12" r="9.5"/><path d="m12 7.5 4 2.9-1.5 4.7h-5L8 10.4z"/>'),
     soundOn: svg('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>'),
     soundOff: svg('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6M16 9l6 6"/>'),
+    bell: svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
+    bellOff: svg('<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>'),
     sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
     moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
     expand: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
@@ -498,7 +500,7 @@
     const AWAY_TEXT = 'Organizatörün cihazı bağlı değil, skor gecikebilir';
 
     // İzleyici sayfası: geniş ekranda yayın ekranı, telefonda alt alta düzen.
-    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false, flags = new Set(), links = false } = {}) {
+    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false, flags = new Set(), links = false, bell = null } = {}) {
       const state = getState();
       // Turnuva günler önce başlatılmış olabilir; ilk maç başlamadan gecikecek bir skor yok.
       const away = !updating && organizerAway && !!state?.matches.some((m) => m.startedAt) && !T.champion(state);
@@ -532,10 +534,15 @@
       <div class="iz-field" aria-hidden="true"><span class="iz-field-mid"></span><span class="iz-field-circle"></span><span class="iz-field-box"></span><span class="iz-field-box is-bottom"></span></div>
       <header class="iz-head">
         <span class="iz-brand"><span class="iz-mark">${ICONS.brand}</span><span class="iz-brand-name">${esc(tournamentName())}</span></span>
-        <span class="iz-pills">${state && updating ? SYNC_PILL : ''}${pill}</span>
+        <span class="iz-pills">${state && updating ? SYNC_PILL : ''}${pill}${state && bell ? bellButton(bell === 'on') : ''}</span>
       </header>
       <main class="iz-main${layout}">${away ? `<p class="iz-alert" role="status">${AWAY_TEXT}</p>` : ''}${body}</main>
     </div>`;
+    }
+
+    function bellButton(on) {
+      const label = `Gol bildirimleri ${on ? 'açık' : 'kapalı'}`;
+      return `<button class="iz-bell${on ? ' is-on' : ''}" data-action="push-toggle" aria-pressed="${on}" aria-label="Gol bildirimleri" title="${label}">${on ? ICONS.bell : ICONS.bellOff}</button>`;
     }
 
     function watchTeams(links) {

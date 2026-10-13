@@ -82,3 +82,29 @@ async function fromNetworkOrCache(request, network) {
     return (await caches.match(request, { ignoreSearch: true })) || network;
   }
 }
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data?.json() ?? {};
+  } catch {}
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Gol!', {
+      body: data.body || '',
+      icon: '/icons/izle-192.png',
+      vibrate: [200, 100, 200],
+      data: { url: data.url || '/izle' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || '/izle', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => c.url === url);
+      return open ? open.focus() : self.clients.openWindow(url);
+    }),
+  );
+});

@@ -113,6 +113,37 @@ body.is-watch {
   gap: 6px;
 }
 
+.iz-bell {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.24);
+  color: rgb(255 255 255 / 0.72);
+  cursor: pointer;
+}
+
+.iz-bell svg {
+  width: 18px;
+  height: 18px;
+}
+
+.iz-bell.is-on {
+  color: var(--lime);
+}
+
+body.is-watch .toast {
+  width: max-content;
+  text-align: center;
+}
+
+body.is-tabs .toast {
+  bottom: calc(84px + max(10px, env(safe-area-inset-bottom)));
+}
+
 .iz-head .tag-live {
   height: 24px;
   padding: 0 9px;

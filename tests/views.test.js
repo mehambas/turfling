@@ -445,3 +445,12 @@ test('arma kütüphanesi: her arma iki boyutta, yazısız, alan yelek renginde',
   }
   assert.equal(Crests.svg('yok'), '');
 });
+
+test('izleyici: bildirim zili yalnız istenince ve durumuyla görünür, TV ekranında yok', () => {
+  const V = viewer(setup());
+  assert.doesNotMatch(V.renderWatch(), /push-toggle/);
+  assert.match(V.renderWatch({ bell: 'off' }), /<button class="iz-bell" data-action="push-toggle" aria-pressed="false"/);
+  assert.match(V.renderWatch({ bell: 'on' }), /<button class="iz-bell is-on" data-action="push-toggle" aria-pressed="true"/);
+  assert.doesNotMatch(V.renderWatch({ wide: true, bell: 'on' }), /push-toggle/);
+  assert.doesNotMatch(viewer(null).renderWatch({ bell: 'on' }), /push-toggle/);
+});

@@ -1,10 +1,15 @@
 import { DurableObject } from 'cloudflare:workers';
+import { goalNotices } from './goals.js';
+import { publicKeyOf, sendPush, toSubscription, vapidKeys } from './push.js';
 
 const ID_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 const ID_LENGTH = 10;
 const ID_PATTERN = new RegExp(`^[${ID_ALPHABET}]{${ID_LENGTH}}$`);
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_BODY_BYTES = 64 * 1024;
+const MAX_SUBSCRIPTION_BYTES = 4 * 1024;
+const MAX_SUBSCRIPTIONS = 500;
+const PUSH_PREFIX = 'push:';
 // Yönetici cihazı 25 sn'de bir haber verir; iki haber kaçarsa izleyicilere "bağlı değil" denir.
 const PRESENCE_MS = 70 * 1000;
 
@@ -45,6 +50,17 @@ const isState = (s) =>
 
 const stub = (env, id) => env.TURNUVA.get(env.TURNUVA.idFromName(id));
 
+async function readJson(request, maxBytes) {
+  if (Number(request.headers.get('content-length')) > maxBytes) throw new HttpError('too_large', 413);
+  const raw = await request.arrayBuffer();
+  if (raw.byteLength > maxBytes) throw new HttpError('too_large', 413);
+  try {
+    return JSON.parse(new TextDecoder().decode(raw));
+  } catch {
+    throw new HttpError('bad_request', 400);
+  }
+}
+
 // İzleyici linkinin id'si hash'te; ana ekrana eklenen uygulama onu yalnız manifestteki başlangıç adresinden öğrenir.
 function watchManifest(id) {
   const icon = (src, extra = {}) => ({ src, sizes: '512x512', type: 'image/png', ...extra });
@@ -75,6 +91,8 @@ export default {
 
     if (pathname === '/izle.webmanifest') return watchManifest(searchParams.get('id'));
 
+    if (pathname === '/api/push-key') return env.VAPID_KEY ? json({ key: publicKeyOf(env.VAPID_KEY) }) : fail('push_disabled', 404);
+
     if (pathname === '/api/t') {
       if (request.method !== 'POST') return fail('method_not_allowed', 405);
       const id = randomId();
@@ -83,7 +101,7 @@ export default {
       return json({ id, adminToken }, 201);
     }
 
-    const route = pathname.match(/^\/api\/t\/([^/]+)(?:\/(ws|takeover))?$/);
+    const route = pathname.match(/^\/api\/t\/([^/]+)(?:\/(ws|takeover|push))?$/);
     if (route && ID_PATTERN.test(route[1])) return stub(env, route[1]).fetch(request);
 
     return pathname.startsWith('/api/') ? fail('not_found', 404) : new Response('Bulunamadı', { status: 404 });
@@ -110,6 +128,8 @@ export class Turnuva extends DurableObject {
     try {
       if (action === 'ws') return await this.connect(request);
       if (action === 'takeover' && request.method === 'POST') return await this.takeover(request);
+      if (action === 'push' && request.method === 'POST') return await this.subscribe(request);
+      if (action === 'push' && request.method === 'DELETE') return await this.unsubscribe(request);
       if (action === '' && request.method === 'GET') return json(await this.snapshot());
       if (action === '' && request.method === 'PUT') return await this.update(request);
       return fail('method_not_allowed', 405);
@@ -160,16 +180,7 @@ export class Turnuva extends DurableObject {
     const auth = request.headers.get('authorization') || '';
     if (!(await this.tokenMatches(auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''))) throw new HttpError('unauthorized', 401);
 
-    if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) throw new HttpError('too_large', 413);
-    const raw = await request.arrayBuffer();
-    if (raw.byteLength > MAX_BODY_BYTES) throw new HttpError('too_large', 413);
-
-    let body;
-    try {
-      body = JSON.parse(new TextDecoder().decode(raw));
-    } catch {
-      throw new HttpError('bad_request', 400);
-    }
+    const body = await readJson(request, MAX_BODY_BYTES);
     if (!body || typeof body !== 'object' || !DEVICE_PATTERN.test(body.device ?? '')) throw new HttpError('bad_request', 400);
     return body;
   }
@@ -207,6 +218,7 @@ export class Turnuva extends DurableObject {
     const current = (await this.ctx.storage.get('rev')) ?? 0;
     if (baseRev !== current) throw new HttpError('stale', 409, await this.snapshot());
 
+    const notices = goalNotices(await this.ctx.storage.get('state'), state);
     const rev = current + 1;
     const serverTime = Date.now();
     // Organizatör saatiyle sunucu saati arasındaki fark; izleyici kalan süreyi bununla düzeltir.
@@ -214,7 +226,45 @@ export class Turnuva extends DurableObject {
     await this.ctx.storage.put({ rev, state, clockOffset, holder: device, updatedAt: serverTime });
     await this.markSeen(serverTime);
     this.broadcast({ rev, state, clockOffset, holder: device, holderOnline: true, serverTime });
+    if (notices.length && this.env.VAPID_KEY) this.ctx.waitUntil(this.notify(notices, request.url));
     return json({ rev, serverTime });
+  }
+
+  async subscribe(request) {
+    if (!this.env.VAPID_KEY) throw new HttpError('push_disabled', 404);
+    const sub = toSubscription(await readJson(request, MAX_SUBSCRIPTION_BYTES), this.env.PUSH_TEST_ORIGIN);
+    if (!sub) throw new HttpError('bad_request', 400);
+    const key = PUSH_PREFIX + toHex(await sha256(sub.endpoint));
+    if (!(await this.ctx.storage.get(key)) && (await this.ctx.storage.list({ prefix: PUSH_PREFIX })).size >= MAX_SUBSCRIPTIONS) {
+      throw new HttpError('too_many', 429);
+    }
+    await this.ctx.storage.put(key, sub);
+    return json({ subscribed: true });
+  }
+
+  async unsubscribe(request) {
+    const { endpoint } = (await readJson(request, MAX_SUBSCRIPTION_BYTES)) ?? {};
+    if (typeof endpoint !== 'string') throw new HttpError('bad_request', 400);
+    await this.ctx.storage.delete(PUSH_PREFIX + toHex(await sha256(endpoint)));
+    return json({ subscribed: false });
+  }
+
+  async notify(notices, requestUrl) {
+    const { origin, pathname } = new URL(requestUrl);
+    const url = `/izle#${pathname.split('/')[3]}`;
+    const subs = await this.ctx.storage.list({ prefix: PUSH_PREFIX });
+    this.vapid ??= vapidKeys(this.env.VAPID_KEY);
+    const vapid = await this.vapid;
+    await Promise.allSettled(
+      [...subs].map(async ([key, sub]) => {
+        for (const notice of notices) {
+          const status = await sendPush(sub, JSON.stringify({ ...notice, url }), vapid, { subject: origin });
+          // Servis aboneliğin bittiğini söylüyorsa (uygulama silindi, izin geri alındı) bir daha denenmez.
+          if (status === 404 || status === 410) return this.ctx.storage.delete(key);
+          if (status >= 400) console.warn(`push ${status} ${new URL(sub.endpoint).host}`);
+        }
+      }),
+    ).then((results) => results.forEach((r) => r.status === 'rejected' && console.warn(`push hata: ${r.reason}`)));
   }
 
   async webSocketMessage(ws, message) {
