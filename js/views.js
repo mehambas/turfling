@@ -309,7 +309,7 @@
         .filter((g) => !teamId || g.team === teamId)
         .map((g) => {
           const p = player(g.playerId);
-          return p ? `${esc(p.name)} ${goalMinute(g)}` : goalMinute(g);
+          return p ? `${esc(p.name)}${g.ownGoal ? ' (k.k.)' : ''} ${goalMinute(g)}` : goalMinute(g);
         })
         .filter(Boolean)
         .join(' · ');
@@ -883,9 +883,11 @@
           ({ p, goals }) =>
             `<li><span class="iz-pl-name">${esc(p.name)}</span>${goals && goals === top ? '<span class="iz-pl-tag">Gol kralı</span>' : '<span></span>'}<b${goals ? '' : ' class="is-zero"'}>${goals}</b></li>`,
         );
-      const unnamed = state.matches
-        .filter((m) => m.status !== 'pending')
-        .reduce((n, m) => n + m.goals.filter((g) => g.team === id && !g.playerId).length, 0);
+      const played = state.matches.filter((m) => m.status !== 'pending');
+      const count = (test) => played.reduce((n, m) => n + m.goals.filter((g) => g.team === id && test(g)).length, 0);
+      const unnamed = count((g) => !g.playerId);
+      const gifted = count((g) => g.playerId && g.ownGoal);
+      if (gifted) players.push(`<li class="is-unnamed"><span class="iz-pl-name">Rakip kendi kalesine</span><span></span><b>${gifted}</b></li>`);
       if (unnamed) players.push(`<li class="is-unnamed"><span class="iz-pl-name">Golcüsü bilinmeyen</span><span></span><b>${unnamed}</b></li>`);
 
       const mine = T.activeMatches(state).filter((m) => m.home === id || m.away === id);

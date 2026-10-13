@@ -260,6 +260,25 @@ test('gol krallığı: isimli golleri sayar, isimsizleri ayrıca bildirir', () =
   assert.equal(anonymous, 1);
 });
 
+test('kendi kalesine gol skora yazılır, gol krallığına sayılmaz; işaret oyuncu değişince kalkar', () => {
+  const s = setup();
+  const m = play(s, 'L1', 1, 0);
+  const g = m.goals[0];
+  const opponent = s.teams.find((t) => t.id === m.away).playerIds[0];
+  T.setScorer(g, opponent, true);
+  assert.deepEqual([g.playerId, g.ownGoal], [opponent, true]);
+  assert.deepEqual(T.score(m), { home: 1, away: 0 });
+  assert.deepEqual(T.topScorers(s), { list: [], anonymous: 0 });
+
+  const mate = s.teams.find((t) => t.id === m.home).playerIds[0];
+  T.setScorer(g, mate);
+  assert.equal('ownGoal' in g, false);
+  assert.deepEqual(T.topScorers(s).list.map((x) => [x.playerId, x.goals]), [[mate, 1]]);
+
+  T.setScorer(g, null, true);
+  assert.deepEqual([g.playerId, 'ownGoal' in g], [null, false]);
+});
+
 test('yedek: bozuk veri reddedilir, eksik ayarlar varsayılanla tamamlanır', () => {
   assert.equal(T.isValidState({ foo: 1 }), false);
   const s = T.migrate({ players: [], teams: [{}, {}, {}], settings: { leagueMin: 9 } });

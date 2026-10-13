@@ -1129,6 +1129,16 @@ p {
   gap: 8px;
 }
 
+.pk-og-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.8);
+}
+
 .pk-player {
   display: inline-flex;
   align-items: center;
@@ -2773,6 +2783,13 @@ p {
 .gd-label {
   margin-bottom: -6px;
   font-weight: 600;
+}
+
+.gd-og {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .goal-dialog .pk-players {

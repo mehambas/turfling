@@ -454,3 +454,22 @@ test('izleyici: bildirim zili yalnız istenince ve durumuyla görünür, TV ekra
   assert.doesNotMatch(V.renderWatch({ wide: true, bell: 'on' }), /push-toggle/);
   assert.doesNotMatch(viewer(null).renderWatch({ bell: 'on' }), /push-toggle/);
 });
+
+test('kendi kalesine gol: listelerde (k.k.), golcünün sayısına girmez, takım sayfasında ayrı satır', () => {
+  const s = setup();
+  const now = Date.now();
+  const m = s.matches[0];
+  T.startMatch(s, m, now - 5 * MIN);
+  const g = T.addGoal(m, m.home, now);
+  g.ms = 3 * MIN;
+  const culprit = s.teams.find((t) => t.id === m.away).playerIds[0];
+  const name = s.players.find((p) => p.id === culprit).name;
+  T.setScorer(g, culprit, true);
+  const V = viewer(s);
+
+  assert.match(V.renderWatch(), new RegExp(`${name} \\(k\\.k\\.\\) 4'`));
+  assert.match(V.renderWatch({ wide: true }), new RegExp(`${name} \\(k\\.k\\.\\) 4'`));
+  assert.match(V.renderTeamPage(m.home), /<span class="iz-pl-name">Rakip kendi kalesine<\/span><span><\/span><b>1<\/b>/);
+  assert.doesNotMatch(V.renderTeamPage(m.home), /Golcüsü bilinmeyen/);
+  assert.doesNotMatch(V.renderTeamPage(m.away), /Gol kralı|kendi kalesine/);
+});

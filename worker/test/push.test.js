@@ -106,6 +106,11 @@ describe('gol bildirimleri', () => {
     assert.deepEqual(goalNotices(state([g1]), state([g1, g2])), [{ title: 'Gol! Maviler', body: 'Kırmızılar 1–1 Maviler' }]);
   });
 
+  test('kendi kalesine gol: oyuncunun yanında belirtilir', () => {
+    const own = { id: 'g3', team: 'A', playerId: 'p2', ownGoal: true };
+    assert.deepEqual(goalNotices(state([]), state([own])), [{ title: 'Gol! Kırmızılar', body: 'Veli (kendi kalesine) · Kırmızılar 1–0 Maviler' }]);
+  });
+
   test('aynı anda gelen iki gol sırayla, ara skorlarıyla bildirilir', () => {
     assert.deepEqual(
       goalNotices(state([]), state([g1, g2])).map((n) => n.body),

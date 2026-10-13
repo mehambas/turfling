@@ -218,6 +218,13 @@
     return goal;
   }
 
+  // Kendi kalesine golde oyuncu rakip takımdandır; gol yine golü kazanan takıma yazılır, gol krallığına sayılmaz.
+  function setScorer(g, playerId, ownGoal = false) {
+    g.playerId = playerId || null;
+    if (ownGoal && g.playerId) g.ownGoal = true;
+    else delete g.ownGoal;
+  }
+
   function undoGoal(m, teamId) {
     for (let i = m.goals.length - 1; i >= 0; i--) {
       if (m.goals[i].team === teamId) return m.goals.splice(i, 1)[0];
@@ -381,6 +388,7 @@
     for (const m of state.matches) {
       if (m.status === 'pending') continue;
       for (const g of m.goals) {
+        if (g.ownGoal) continue;
         if (!g.playerId) anonymous++;
         else counts.set(g.playerId, (counts.get(g.playerId) || 0) + 1);
       }
@@ -514,6 +522,7 @@
     finishMatch,
     resetMatch,
     addGoal,
+    setScorer,
     undoGoal,
     removeGoal,
     score,

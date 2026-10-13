@@ -480,11 +480,20 @@
     </div>`;
   }
 
+  // Kendi kalesine atabilecek olan rakip takımdır; "Diğer…" yalnız o maçta oynamayan takımdan yardıma gelen içindir.
+  function scorerGroups(m, teamId) {
+    const roster = (t) => (t ? t.playerIds.map(player).filter(Boolean) : []);
+    const opp = team(m.home === teamId ? m.away : m.home);
+    const rest = state.teams.find((t) => t.id !== m.home && t.id !== m.away);
+    return { own: roster(team(teamId)), opp, against: roster(opp), rest, guests: roster(rest) };
+  }
+
   function goalChip(g, withDot) {
     const p = player(g.playerId);
     const min = goalMinute(g);
-    const label = p ? `${esc(p.name)} ${min}` : `? ${min}`;
-    const aria = p ? `Gol: ${p.name}, ${min}. Düzenle veya sil` : `Gol ${min}: golü atan seçilmedi`;
+    const og = p && g.ownGoal;
+    const label = p ? `${esc(p.name)}${og ? ' (k.k.)' : ''} ${min}` : `? ${min}`;
+    const aria = p ? `Gol: ${p.name}${og ? ', kendi kalesine' : ''}, ${min}. Düzenle veya sil` : `Gol ${min}: golü atan seçilmedi`;
     const cls = `${p ? '' : ' is-unknown'}${ui.goalPicker === g.id ? ' is-open' : ''}`;
     return `<button class="chip-goal${cls}" style="${teamStyle(team(g.team))}" data-action="scorer-edit" data-goal="${g.id}" aria-label="${esc(aria)}" title="Düzenle / sil">${withDot ? '<span class="sw"></span>' : ''}${label}${p && !withDot ? ICONS.pencil : ''}</button>`;
   }
@@ -497,15 +506,14 @@
     const t = team(g.team);
     const s = T.score(m);
     const min = goalMinute(g);
-    const chip = (p) => {
-      const on = g.playerId === p.id;
-      return `<button class="pk-player${on ? ' is-on' : ''}" data-action="scorer-pick" data-goal="${g.id}" data-player="${p.id}" aria-pressed="${on}">${on ? ICONS.check : ''}${esc(p.name)}</button>`;
+    const chip = (p, ownGoal = false) => {
+      const on = g.playerId === p.id && !!g.ownGoal === ownGoal;
+      return `<button class="pk-player${on ? ' is-on' : ''}" data-action="scorer-pick" data-goal="${g.id}" data-player="${p.id}"${ownGoal ? ' data-own="1"' : ''} aria-pressed="${on}">${on ? ICONS.check : ''}${esc(p.name)}</button>`;
     };
-    const own = t.playerIds.map(player).filter(Boolean);
-    const others = state.players.filter((p) => !t.playerIds.includes(p.id));
+    const { own, guests, opp, against } = scorerGroups(m, g.team);
     const more = ui.showAllScorers
-      ? others.map(chip).join('')
-      : others.length
+      ? guests.map((p) => chip(p)).join('')
+      : guests.length
         ? '<button class="pk-player pk-more" data-action="scorer-more">Diğer…</button>'
         : '';
     return `<div class="picker-scrim narrow-only" data-action="picker-close"></div>
@@ -521,9 +529,10 @@
       </div>
       <span class="picker-label narrow-only">Golü atan</span>
       <div class="pk-players" role="group" aria-label="Golü atan">
-        ${own.map(chip).join('')}${more}
+        ${own.map((p) => chip(p)).join('')}${more}
         <button class="pk-later wide-only" data-action="picker-close">Kapat</button>
       </div>
+      ${ownGoalPicks(opp, against, (p) => chip(p, true), 'picker-label pk-og-label')}
       <div class="pk-foot narrow-only">
         <button class="pk-delete" data-action="goal-remove" data-goal="${g.id}">${ICONS.trash}Golü sil</button>
         <button class="btn btn-primary btn-lg" data-action="picker-close">Tamam</button>
@@ -1077,16 +1086,22 @@
     </div>`;
   }
 
+  function ownGoalPicks(opp, against, chip, labelClass) {
+    if (!against.length) return '';
+    return `<span class="${labelClass}" style="${teamStyle(opp)}">Kendi kalesine · ${swatch(opp)}${esc(opp.name)}</span>
+      <div class="pk-players" role="group" aria-label="Kendi kalesine">${against.map(chip).join('')}</div>`;
+  }
+
   function goalHtml() {
     const m = match(dialog.matchId);
     const t = team(dialog.opts.team);
     const s = T.score(m);
-    const chip = (p) => `<button class="pk-player" data-action="goal-confirm" data-player="${p.id}"><span class="tn-name">${esc(p.name)}</span></button>`;
-    const own = t.playerIds.map(player).filter(Boolean);
-    const others = state.players.filter((p) => !t.playerIds.includes(p.id));
+    const chip = (p, ownGoal = false) =>
+      `<button class="pk-player" data-action="goal-confirm" data-player="${p.id}"${ownGoal ? ' data-own="1"' : ''}><span class="tn-name">${esc(p.name)}</span></button>`;
+    const { own, guests, opp, against } = scorerGroups(m, t.id);
     const more = ui.showAllScorers
-      ? others.map(chip).join('')
-      : others.length
+      ? guests.map((p) => chip(p)).join('')
+      : guests.length
         ? '<button class="pk-player pk-more" data-action="scorer-more">Diğer…</button>'
         : '';
     return `<div class="dialog-body goal-dialog" style="${teamStyle(t)}">
@@ -1096,9 +1111,10 @@
       </div>
       <span class="gd-label">Kim attı?</span>
       <div class="pk-players" role="group" aria-label="Golü atan">
-        ${own.map(chip).join('')}${more}
+        ${own.map((p) => chip(p)).join('')}${more}
         <button class="pk-player gd-unknown" data-action="goal-confirm" data-player="">Bilinmiyor</button>
       </div>
+      ${ownGoalPicks(opp, against, (p) => chip(p, true), 'gd-label gd-og')}
       <div class="dialog-actions"><button class="btn" data-action="dialog-cancel">Vazgeç</button></div>
     </div>`;
   }
@@ -1109,17 +1125,14 @@
     const s = T.score(m);
     const home = team(m.home);
     const away = team(m.away);
-    const options = (selected) =>
-      `<option value="">Bilinmiyor</option>${state.teams
-        .map(
-          (t) =>
-            `<optgroup label="${esc(t.name)}">${t.playerIds
-              .map(player)
-              .filter(Boolean)
-              .map((p) => `<option value="${p.id}"${selected === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
-              .join('')}</optgroup>`,
-        )
-        .join('')}`;
+    const options = (g) => {
+      const { own, opp, against, rest, guests } = scorerGroups(m, g.team);
+      const opt = (p, ownGoal) =>
+        `<option value="${ownGoal ? 'og:' : ''}${p.id}"${g.playerId === p.id && !!g.ownGoal === ownGoal ? ' selected' : ''}>${esc(p.name)}${ownGoal ? ' (k.k.)' : ''}</option>`;
+      const group = (label, list, ownGoal = false) =>
+        list.length ? `<optgroup label="${esc(label)}">${list.map((p) => opt(p, ownGoal)).join('')}</optgroup>` : '';
+      return `<option value="">Bilinmiyor</option>${group(team(g.team)?.name, own)}${group(`Kendi kalesine · ${opp?.name}`, against, true)}${group(rest?.name, guests)}`;
+    };
     const side = (t, n) => `<div class="edit-side">
       ${teamName(t.id)}
       <div class="stepper">
@@ -1133,7 +1146,7 @@
         (g) => `<li style="${teamStyle(team(g.team))}">
           <span class="sw"></span>
           <span class="eg-min">${goalMinute(g) || '–'}</span>
-          <span class="pot pot-wide"><select data-field="goal-scorer" data-match="${m.id}" data-goal="${g.id}" aria-label="Golü atan">${options(g.playerId)}</select>${ICONS.chevron}</span>
+          <span class="pot pot-wide"><select data-field="goal-scorer" data-match="${m.id}" data-goal="${g.id}" aria-label="Golü atan">${options(g)}</select>${ICONS.chevron}</span>
           <button class="icon-btn icon-ghost icon-sm" data-action="goal-remove" data-match="${m.id}" data-goal="${g.id}" aria-label="Golü sil" title="Golü sil">${ICONS.x}</button>
         </li>`,
       )
@@ -1507,7 +1520,7 @@
       commit(() => {
         const g = T.addGoal(m, teamId, Date.now());
         g.ms = ms;
-        g.playerId = el.dataset.player || null;
+        T.setScorer(g, el.dataset.player, el.dataset.own === '1');
       });
     },
 
@@ -1537,7 +1550,7 @@
       const m = liveMatch();
       const g = m?.goals.find((x) => x.id === el.dataset.goal);
       ui.goalPicker = null;
-      if (g && el.dataset.player) commit(() => (g.playerId = el.dataset.player));
+      if (g && el.dataset.player) commit(() => T.setScorer(g, el.dataset.player, el.dataset.own === '1'));
       else render();
     },
 
@@ -1841,7 +1854,8 @@
       if (p) commit(() => (p.pot = Number(el.value)));
     } else if (field === 'goal-scorer') {
       const g = match(el.dataset.match)?.goals.find((x) => x.id === el.dataset.goal);
-      if (g) commit(() => (g.playerId = el.value || null));
+      const ownGoal = el.value.startsWith('og:');
+      if (g) commit(() => T.setScorer(g, ownGoal ? el.value.slice(3) : el.value, ownGoal));
     }
   });
 

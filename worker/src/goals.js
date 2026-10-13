@@ -13,7 +13,8 @@ export function goalNotices(before, after) {
       if (g.team === m.home) home++;
       else away++;
       if (known.has(g.id)) continue;
-      const scorer = name(after.players, g.playerId);
+      const player = name(after.players, g.playerId);
+      const scorer = player && g.ownGoal ? `${player} (kendi kalesine)` : player;
       const line = `${name(after.teams, m.home) ?? m.home} ${home}–${away} ${name(after.teams, m.away) ?? m.away}`;
       notices.push({ title: `Gol! ${name(after.teams, g.team) ?? g.team}`, body: scorer ? `${scorer} · ${line}` : line });
     }
