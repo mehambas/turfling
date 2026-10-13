@@ -138,6 +138,23 @@ test('ana sayfada takımlar ve oyuncuları; sekmelerde takım sayfasını açar,
   assert.doesNotMatch(viewer(T.createState()).renderWatch(), /Takımlar/);
 });
 
+test('geniş ekranda takımlar: bekleme ekranında üç kutu, fikstür penceresinde kart', () => {
+  const pre = T.createState();
+  T.addPlayers(pre, ['Emre', 'Can', 'Ali', 'Mert']);
+  T.applyDraw(pre, seeded(1));
+  const names = (s, t) => t.playerIds.map((id) => s.players.find((p) => p.id === id).name).join(', ');
+  const tv = viewer(pre).renderWatch({ wide: true });
+  assert.match(tv, /tv-sub">[^<]*<\/span>\s*<\/div>\s*<section class="tv-teams"[\s\S]*<section class="tv-rules"/);
+  for (const t of pre.teams) assert.match(tv, new RegExp(`${t.name}</span><span class="tv-team-players">${names(pre, t)}<`));
+  assert.deepEqual([...actionsIn(tv)], ['toggle-fullscreen']);
+  assert.doesNotMatch(viewer(T.createState()).renderWatch({ wide: true }), /tv-teams/);
+
+  const s = setup();
+  const sheet = viewer(s).renderSheet({});
+  assert.match(sheet, /Puan durumu[\s\S]*id="h-roster">Takımlar<[\s\S]*Gol kral/);
+  for (const t of s.teams) assert.match(sheet, new RegExp(`${t.name}</span></span><span class="iz-roster-players">${names(s, t)}<`));
+});
+
 test('kural metni ayarlara göre: devre sayısı, playoff, süreler', () => {
   const base = T.createState().settings;
   const def = Views.rulesText(base);

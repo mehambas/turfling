@@ -255,6 +255,14 @@
       return day === 'bugün' ? '' : day;
     }
 
+    const rosterTeams = () => getState().teams.filter((t) => t.playerIds.length);
+    const playerNames = (t) =>
+      t.playerIds
+        .map(player)
+        .filter(Boolean)
+        .map((p) => esc(p.name))
+        .join(', ');
+
     function lastFinished() {
       return getState().matches.filter((m) => m.status === 'done').sort((a, b) => b.endedAt - a.endedAt)[0] || null;
     }
@@ -439,11 +447,21 @@
       <div class="tv-big">${esc(tournamentName())}</div>
       <span class="tv-sub">${startText(getState().settings) || 'Turnuva henüz başlamadı'}</span>
     </div>
+    ${screenTeams()}
     <section class="tv-rules" aria-labelledby="tv-rules-h">
       <h2 class="tv-rules-h" id="tv-rules-h">Nasıl oynanıyor?</h2>
       ${rulesFlow(r)}
       <p class="tv-rules-line">${r.tvLine}</p>
     </section>`;
+    }
+
+    function screenTeams() {
+      const list = rosterTeams();
+      if (!list.length) return '';
+      const tiles = list.map(
+        (t) => `<li class="tv-team" style="${teamStyle(t)}"><span class="tv-team-name"><span class="sw"></span>${esc(t.name)}</span><span class="tv-team-players">${playerNames(t)}</span></li>`,
+      );
+      return `<section class="tv-teams" aria-labelledby="tv-teams-h"><h2 class="tv-rules-h" id="tv-teams-h">Takımlar</h2><ul class="tv-team-list">${tiles.join('')}</ul></section>`;
     }
 
     function screenNext(m, est) {
@@ -514,11 +532,10 @@
     }
 
     function watchTeams(links) {
-      const list = getState().teams.filter((t) => t.playerIds.length);
+      const list = rosterTeams();
       if (!list.length) return '';
       const rows = list.map((t) => {
-        const names = t.playerIds.map(player).filter(Boolean).map((p) => esc(p.name)).join(', ');
-        const inner = `<span class="iz-tl-name"><span class="sw"></span>${esc(t.name)}</span><span class="iz-tl-players">${names}</span>`;
+        const inner = `<span class="iz-tl-name"><span class="sw"></span>${esc(t.name)}</span><span class="iz-tl-players">${playerNames(t)}</span>`;
         return links
           ? `<button class="iz-tl-row" data-action="team" data-team="${t.id}" style="${teamStyle(t)}">${inner}${ICONS.forward}</button>`
           : `<div class="iz-tl-row" style="${teamStyle(t)}">${inner}</div>`;
@@ -633,9 +650,16 @@
           <h2 id="iz-sheet-title">Fikstür ve puan</h2>
           <button class="iz-close" data-action="sheet-close" aria-label="Kapat" autofocus>${ICONS.x}</button>
         </div>
-        <div class="iz-sheet-top">${renderStandings()}<div class="iz-sheet-side">${watchScorers(scorersOpen)}${watchRules({ open: rulesOpen, light: true })}</div></div>
+        <div class="iz-sheet-top"><div class="iz-sheet-side">${renderStandings()}${sheetTeams()}</div><div class="iz-sheet-side">${watchScorers(scorersOpen)}${watchRules({ open: rulesOpen, light: true })}</div></div>
         ${watchFixtures()}
       </section>`;
+    }
+
+    function sheetTeams() {
+      const list = rosterTeams();
+      if (!list.length) return '';
+      const rows = list.map((t) => `<div class="iz-roster-row">${teamName(t.id)}<span class="iz-roster-players">${playerNames(t)}</span></div>`);
+      return `<section class="card side-card" aria-labelledby="h-roster"><h2 class="card-title" id="h-roster">Takımlar</h2>${rows.join('')}</section>`;
     }
 
     function rulesFlow(r) {
