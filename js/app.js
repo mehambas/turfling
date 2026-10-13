@@ -892,10 +892,10 @@
     </div>`;
   }
 
-  function timeField(key, label, hint) {
+  function timeField(key, label, hint, type = 'time') {
     return `<div class="box box-time">
       <label class="box-label" for="time-${key}">${label}</label>
-      <input class="time-input" id="time-${key}" type="time" required data-field="setting-time" data-key="${key}" value="${esc(state.settings[key])}">
+      <input class="time-input" id="time-${key}" type="${type}" required data-field="setting-time" data-key="${key}" value="${esc(state.settings[key])}">
       <span class="box-hint">${hint}</span>
       <button class="icon-btn icon-ghost icon-sm box-clear" data-action="clear-time" data-key="${key}" aria-label="${label}: temizle" title="Temizle">${ICONS.x}</button>
     </div>`;
@@ -929,6 +929,7 @@
           ${stepper('breakMin', 'Lig sonrası ara')}
         </div>
         <div class="fmt-row fmt-row-2">
+          ${timeField('plannedDate', 'Tarih', 'İzleyici ekranında görünür', 'date')}
           ${timeField('plannedStart', 'Başlangıç', 'Boşsa ilk maçın başladığı an')}
           ${timeField('pitchEnd', 'Saha bitişi', 'Aşılacaksa uyarı verir')}
         </div>

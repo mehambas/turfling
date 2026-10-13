@@ -19,6 +19,7 @@
     finalMin: 15,
     changeMin: 2,
     breakMin: 3,
+    plannedDate: '',
     plannedStart: '',
     pitchEnd: '',
   };
@@ -411,6 +412,15 @@
     return [t - DAY, t + DAY].reduce((best, x) => (Math.abs(x - ref) < Math.abs(best - ref) ? x : best), t);
   }
 
+  // Geçmiş bir tarih eski turnuvadan kalmıştır; yok sayılır.
+  function plannedDay(settings, now = Date.now()) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(settings.plannedDate || '');
+    if (!m) return null;
+    const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+    const today = new Date(now).setHours(0, 0, 0, 0);
+    return day >= today ? day : null;
+  }
+
   function occurrenceAfter(hhmm, ref) {
     let t = nearestOccurrence(hhmm, ref);
     if (t == null) return null;
@@ -428,7 +438,8 @@
     const s = state.settings;
     const list = activeMatches(state);
     const started = list.filter((m) => m.startedAt).map((m) => m.startedAt);
-    const ref = started.length ? Math.min(...started) : now;
+    const day = started.length || !parseClock(s.plannedStart) ? null : plannedDay(s, now);
+    const ref = started.length ? Math.min(...started) : day != null ? day + DAY / 2 : now;
     const start = nearestOccurrence(s.plannedStart, ref) ?? ref;
     const items = [];
     let planned = start;
@@ -513,6 +524,7 @@
     resolveKnockouts,
     champion,
     topScorers,
+    plannedDay,
     schedule,
     playTimeRange,
   };

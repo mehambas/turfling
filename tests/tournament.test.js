@@ -221,6 +221,25 @@ test('zaman planı: gece yarısını geçen saha saati doğru güne düşer', ()
   assert.equal((sc.pitchEnd - sc.start) / MIN, 90);
 });
 
+test('zaman planı: ileri bir tarih girildiyse plan o günden başlar, geçmiş tarih yok sayılır', () => {
+  const s = setup();
+  s.settings.plannedStart = '20:00';
+  s.settings.plannedDate = '2026-10-18';
+  const day = new Date(2026, 9, 18, 20, 0).getTime();
+  const sc = T.schedule(s, at(12, 0));
+  assert.equal(sc.start, day);
+  assert.equal(sc.items[0].estStart, day);
+  assert.equal(sc.delayMs, 0);
+
+  s.settings.plannedDate = '2026-10-10';
+  assert.equal(T.plannedDay(s.settings, at(12, 0)), null);
+  assert.equal(T.schedule(s, at(12, 0)).start, at(20, 0));
+
+  s.settings.plannedDate = '2026-10-18';
+  s.settings.plannedStart = '';
+  assert.equal(T.schedule(s, at(12, 0)).start, at(12, 0));
+});
+
 test('zaman planı: geç başlayan maç gecikmeyi sonraki maçlara taşır', () => {
   const s = setup();
   s.settings.plannedStart = '20:00';

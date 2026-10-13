@@ -71,6 +71,32 @@ test('izleyici başlamadan önce: kurallar hep açık, telefonda ve TV ekranınd
   assert.deepEqual([...actionsIn(tv)], ['toggle-fullscreen']);
 });
 
+test('başlangıç yazısı: tarih ve saat; bugün/yarın kısaltılır, geçmiş tarih yok sayılır', () => {
+  const now = new Date(2026, 9, 13, 12, 0).getTime();
+  const text = (plannedDate, plannedStart = '') => Views.startText({ plannedDate, plannedStart }, now);
+  assert.equal(text('2026-10-18', '20:00'), 'Başlangıç: 18 Ekim Pazar, 20:00');
+  assert.equal(text('2026-10-18'), 'Başlangıç: 18 Ekim Pazar');
+  assert.equal(text('2026-10-13', '21:30'), 'Başlangıç: bugün 21:30');
+  assert.equal(text('2026-10-14', '20:00'), 'Başlangıç: yarın 20:00');
+  assert.equal(text('2027-01-04', '20:00'), 'Başlangıç: 4 Ocak 2027 Pazartesi, 20:00');
+  assert.equal(text('2026-10-12', '20:00'), 'Başlangıç: 20:00');
+  assert.equal(text('', '20:00'), 'Başlangıç: 20:00');
+  assert.equal(text(''), '');
+});
+
+test('izleyici başlamadan önce: tarih ve saat girildiyse "henüz başlamadı" yerine başlangıç gösterilir', () => {
+  const s = T.createState();
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  s.settings.plannedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  s.settings.plannedStart = '20:00';
+  const V = viewer(s);
+  for (const html of [V.renderWatch(), V.renderWatch({ wide: true })]) {
+    assert.match(html, /Başlangıç: yarın 20:00/);
+    assert.doesNotMatch(html, /henüz başlamadı/);
+  }
+});
+
 test('kural metni ayarlara göre: devre sayısı, playoff, süreler', () => {
   const base = T.createState().settings;
   const def = Views.rulesText(base);

@@ -102,6 +102,21 @@
 
   const goalMinute = (g) => (g.ms == null ? '' : `${Math.floor(g.ms / MINUTE) + 1}'`);
 
+  function startText(s, now = Date.now()) {
+    const time = /^\d{1,2}:\d{2}$/.test(s.plannedStart || '') ? s.plannedStart : '';
+    const day = T.plannedDay(s, now);
+    if (day == null) return time ? `Başlangıç: ${time}` : '';
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const d = new Date(day);
+    const near = day === today.getTime() ? 'bugün' : day === tomorrow.getTime() ? 'yarın' : '';
+    const year = d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {};
+    const name = near || d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long', ...year });
+    return `Başlangıç: ${name}${time ? `${near ? ' ' : ', '}${time}` : ''}`;
+  }
+
   const TIMES = { 1: 'bir', 2: 'iki', 3: 'üç' };
 
   function rulesText(s) {
@@ -407,7 +422,7 @@
       return `<div class="tv-center">
       <span class="tv-kicker">Hoş geldiniz</span>
       <div class="tv-big">${esc(tournamentName())}</div>
-      <span class="tv-sub">Turnuva henüz başlamadı</span>
+      <span class="tv-sub">${startText(getState().settings) || 'Turnuva henüz başlamadı'}</span>
     </div>
     <section class="tv-rules" aria-labelledby="tv-rules-h">
       <h2 class="tv-rules-h" id="tv-rules-h">Nasıl oynanıyor?</h2>
@@ -458,7 +473,7 @@
       if (!state) {
         body = watchHero(...(WATCH_NOTICES[notice] || WATCH_NOTICES.connecting));
       } else if (!state.started) {
-        body = watchHero('Hoş geldiniz', esc(tournamentName()), 'Turnuva henüz başlamadı') + watchRules({ fixed: true });
+        body = watchHero('Hoş geldiniz', esc(tournamentName()), startText(state.settings) || 'Turnuva henüz başlamadı') + watchRules({ fixed: true });
         layout = ' is-center is-pre';
       } else if (liveMatch()) {
         pill = '<span class="tag-live">Canlı</span>';
@@ -920,5 +935,5 @@
     };
   }
 
-  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, rulesText, toggleRules, keepAwake, sheetView, create };
+  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, fmtClock, fmtTime, goalMinute, startText, rulesText, toggleRules, keepAwake, sheetView, create };
 });
