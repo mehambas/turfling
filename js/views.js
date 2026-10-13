@@ -658,8 +658,8 @@
     function sheetTeams() {
       const list = rosterTeams();
       if (!list.length) return '';
-      const rows = list.map((t) => `<div class="iz-roster-row">${teamName(t.id)}<span class="iz-roster-players">${playerNames(t)}</span></div>`);
-      return `<section class="card side-card" aria-labelledby="h-roster"><h2 class="card-title" id="h-roster">Takımlar</h2>${rows.join('')}</section>`;
+      const rows = list.map((t) => `<div class="iz-roster-name">${teamName(t.id)}</div><span class="iz-roster-players">${playerNames(t)}</span>`);
+      return `<section class="card side-card" aria-labelledby="h-roster"><h2 class="card-title" id="h-roster">Takımlar</h2><div class="iz-roster">${rows.join('')}</div></section>`;
     }
 
     function rulesFlow(r) {

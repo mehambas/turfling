@@ -152,7 +152,7 @@ test('geniş ekranda takımlar: bekleme ekranında üç kutu, fikstür penceresi
   const s = setup();
   const sheet = viewer(s).renderSheet({});
   assert.match(sheet, /Puan durumu[\s\S]*id="h-roster">Takımlar<[\s\S]*Gol kral/);
-  for (const t of s.teams) assert.match(sheet, new RegExp(`${t.name}</span></span><span class="iz-roster-players">${names(s, t)}<`));
+  for (const t of s.teams) assert.match(sheet, new RegExp(`${t.name}</span></span></div><span class="iz-roster-players">${names(s, t)}<`));
 });
 
 test('kural metni ayarlara göre: devre sayısı, playoff, süreler', () => {

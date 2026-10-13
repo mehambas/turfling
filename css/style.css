@@ -3592,27 +3592,26 @@ body.is-screen .live-bar {
   gap: 10px;
 }
 
-.iz-roster-row {
+.iz-roster {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  align-items: baseline;
-  gap: 10px;
-  padding: 10px 0;
-  border-top: 1px solid var(--ring);
-}
-
-.iz-roster-row:first-of-type {
+  grid-template-columns: max-content minmax(0, 1fr);
   margin-top: 6px;
 }
 
-.iz-roster-row .tn {
+.iz-roster > * {
+  padding: 10px 0;
+  border-top: 1px solid var(--ring);
+  line-height: 18px;
+}
+
+.iz-roster-name {
+  padding-right: 16px;
   font-weight: 600;
   color: var(--ink);
 }
 
 .iz-roster-players {
   font-size: 13px;
-  line-height: 1.35;
   color: var(--ink-2);
 }
 
