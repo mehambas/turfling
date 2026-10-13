@@ -167,7 +167,7 @@
 
   function renderTabs(opts) {
     if (!nav) buildShell();
-    fill(nav.roots.mac.querySelector('.iz-page-body'), V.renderWatch(opts));
+    fill(nav.roots.mac.querySelector('.iz-page-body'), V.renderWatch({ ...opts, links: true }));
     fill(nav.roots.fikstur.querySelector('.iz-scroll'), V.renderFixturePage({ rulesOpen: ui.rulesOpen }));
     fill(nav.roots.puan.querySelector('.iz-scroll'), V.renderStandingsPage());
     for (const [tab, teamId] of Object.entries(teams)) {

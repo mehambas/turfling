@@ -67,6 +67,7 @@
     copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
     share: svg('<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4M12 2v13"/>'),
     lock: svg('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    users: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
     help: svg('<circle cx="12" cy="12" r="9.5"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.7-2.8 2.7"/><path d="M12 17h.01"/>'),
   };
 
@@ -102,19 +103,25 @@
 
   const goalMinute = (g) => (g.ms == null ? '' : `${Math.floor(g.ms / MINUTE) + 1}'`);
 
+  function dayName(ts, now = Date.now()) {
+    const d = new Date(ts);
+    d.setHours(0, 0, 0, 0);
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const diff = Math.round((d - today) / (24 * 60 * MINUTE));
+    if (diff === 0) return 'bugün';
+    if (diff === 1) return 'yarın';
+    const year = d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {};
+    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long', ...year });
+  }
+
+  const withTime = (day, time) => (time ? `${day}${day === 'bugün' || day === 'yarın' ? ' ' : ', '}${time}` : day);
+
   function startText(s, now = Date.now()) {
     const time = /^\d{1,2}:\d{2}$/.test(s.plannedStart || '') ? s.plannedStart : '';
     const day = T.plannedDay(s, now);
     if (day == null) return time ? `Başlangıç: ${time}` : '';
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const d = new Date(day);
-    const near = day === today.getTime() ? 'bugün' : day === tomorrow.getTime() ? 'yarın' : '';
-    const year = d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {};
-    const name = near || d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long', ...year });
-    return `Başlangıç: ${name}${time ? `${near ? ' ' : ', '}${time}` : ''}`;
+    return `Başlangıç: ${withTime(dayName(day, now), time)}`;
   }
 
   const TIMES = { 1: 'bir', 2: 'iki', 3: 'üç' };
@@ -240,6 +247,13 @@
     const findStage = (stage, list = getState().matches) => list.find((m) => m.stage === stage) || null;
     const estimates = (st) => Object.fromEntries(T.schedule(st).items.map((i) => [i.id, i]));
     const tournamentName = () => getState()?.name.trim() || DEFAULT_NAME;
+
+    // Yalnız ilk maç için: turnuva başka bir gün başlıyorsa saat tek başına yanıltır.
+    function firstMatchDay(it) {
+      if (!it || getState().matches.some((m) => m.startedAt)) return '';
+      const day = dayName(it.estStart);
+      return day === 'bugün' ? '' : day;
+    }
 
     function lastFinished() {
       return getState().matches.filter((m) => m.status === 'done').sort((a, b) => b.endedAt - a.endedAt)[0] || null;
@@ -397,10 +411,11 @@
       if (!m) return '<div class="tv-center"><span class="tv-sub">Sıradaki maç bekleniyor</span></div>';
       const last = lastFinished();
       const it = est[m.id];
+      const day = firstMatchDay(it);
       return `<div class="tv-center">
       <span class="tv-kicker">Sıradaki · ${matchLabel(m)}</span>
       <div class="tv-big">${screenTeam(m, 'home')}<span class="tv-dash">–</span>${screenTeam(m, 'away', true)}</div>
-      ${it && m.home && m.away ? `<span class="tv-sub">Tahmini başlama ${fmtTime(it.estStart)}</span>` : ''}
+      ${it && m.home && m.away ? `<span class="tv-sub">Tahmini başlama ${day ? withTime(day, fmtTime(it.estStart)) : fmtTime(it.estStart)}</span>` : ''}
       ${last ? `<span class="tv-last">Son maç: ${lastResult(last)}</span>` : ''}
     </div>`;
     }
@@ -458,9 +473,10 @@
     const AWAY_TEXT = 'Organizatörün cihazı bağlı değil, skor gecikebilir';
 
     // İzleyici sayfası: geniş ekranda yayın ekranı, telefonda alt alta düzen.
-    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false, flags = new Set() } = {}) {
+    function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false, flags = new Set(), links = false } = {}) {
       const state = getState();
-      const away = !updating && organizerAway && !!state?.started && !T.champion(state);
+      // Turnuva günler önce başlatılmış olabilir; ilk maç başlamadan gecikecek bir skor yok.
+      const away = !updating && organizerAway && !!state?.matches.some((m) => m.startedAt) && !T.champion(state);
       if (wide) {
         if (!state) return screenNotice(notice);
         const status = updating ? SYNC_PILL : away ? `<span class="iz-pill is-sync" role="status">${AWAY_TEXT}</span>` : '';
@@ -473,18 +489,18 @@
       if (!state) {
         body = watchHero(...(WATCH_NOTICES[notice] || WATCH_NOTICES.connecting));
       } else if (!state.started) {
-        body = watchHero('Hoş geldiniz', esc(tournamentName()), startText(state.settings) || 'Turnuva henüz başlamadı') + watchRules({ fixed: true });
+        body = watchHero('Hoş geldiniz', esc(tournamentName()), startText(state.settings) || 'Turnuva henüz başlamadı') + watchTeams(links) + watchRules({ fixed: true });
         layout = ' is-center is-pre';
       } else if (liveMatch()) {
         pill = '<span class="tag-live">Canlı</span>';
-        body = watchLive(liveMatch(), flags);
+        body = watchLive(liveMatch(), flags) + watchTeams(links);
         layout = '';
       } else if (T.champion(state)) {
         pill = '<span class="iz-pill">Turnuva bitti</span>';
-        body = watchChampion(T.champion(state));
+        body = watchChampion(T.champion(state)) + watchTeams(links);
       } else {
         if (lastFinished()) pill = '<span class="iz-pill">Maç arası</span>';
-        body = watchBreak(estimates(state));
+        body = watchBreak(estimates(state)) + watchTeams(links);
         layout = ' is-break';
       }
       return `<div class="iz">
@@ -495,6 +511,19 @@
       </header>
       <main class="iz-main${layout}">${away ? `<p class="iz-alert" role="status">${AWAY_TEXT}</p>` : ''}${body}</main>
     </div>`;
+    }
+
+    function watchTeams(links) {
+      const list = getState().teams.filter((t) => t.playerIds.length);
+      if (!list.length) return '';
+      const rows = list.map((t) => {
+        const names = t.playerIds.map(player).filter(Boolean).map((p) => esc(p.name)).join(', ');
+        const inner = `<span class="iz-tl-name"><span class="sw"></span>${esc(t.name)}</span><span class="iz-tl-players">${names}</span>`;
+        return links
+          ? `<button class="iz-tl-row" data-action="team" data-team="${t.id}" style="${teamStyle(t)}">${inner}${ICONS.forward}</button>`
+          : `<div class="iz-tl-row" style="${teamStyle(t)}">${inner}</div>`;
+      });
+      return `<section class="iz-teams" aria-labelledby="iz-teams-h"><h2 class="iz-teams-h" id="iz-teams-h">${ICONS.users}Takımlar</h2>${rows.join('')}</section>`;
     }
 
     function watchHero(kicker, title, sub) {
@@ -552,9 +581,10 @@
       if (!m) return watchHero('', 'Sıradaki maç bekleniyor', '');
       const last = lastFinished();
       const it = est[m.id];
+      const day = firstMatchDay(it);
       return `<span class="iz-kicker">Sıradaki · ${matchTitle(m)}</span>
       <div class="iz-vs">${screenTeam(m, 'home')}<span class="iz-vs-dash" aria-hidden="true">–</span>${screenTeam(m, 'away')}</div>
-      ${it ? `<div class="iz-eta"><span>Tahmini başlama</span><strong>${fmtTime(it.estStart)}</strong><span>${T.matchMinutes(getState(), m)} dakikalık maç</span></div>` : ''}
+      ${it ? `<div class="iz-eta"><span>Tahmini başlama</span>${day ? `<span class="iz-eta-day">${day}</span>` : ''}<strong>${fmtTime(it.estStart)}</strong><span>${T.matchMinutes(getState(), m)} dakikalık maç</span></div>` : ''}
       ${last ? watchLast(last) : ''}`;
     }
 

@@ -42,6 +42,12 @@ function playFirst(s, now) {
 const actionsIn = (html) => new Set([...html.matchAll(/data-action="([^"]+)"/g)].map((m) => m[1]));
 const playerName = (s, m, side) => s.players.find((p) => p.id === s.teams.find((t) => t.id === m[side]).playerIds[0]).name;
 
+function dateIn(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function viewer(state) {
   return Views.create(() => state);
 }
@@ -86,15 +92,50 @@ test('başlangıç yazısı: tarih ve saat; bugün/yarın kısaltılır, geçmi�
 
 test('izleyici başlamadan önce: tarih ve saat girildiyse "henüz başlamadı" yerine başlangıç gösterilir', () => {
   const s = T.createState();
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  s.settings.plannedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  s.settings.plannedDate = dateIn(1);
   s.settings.plannedStart = '20:00';
   const V = viewer(s);
   for (const html of [V.renderWatch(), V.renderWatch({ wide: true })]) {
     assert.match(html, /Başlangıç: yarın 20:00/);
     assert.doesNotMatch(html, /henüz başlamadı/);
   }
+});
+
+test('ilk maç başka gündeyse tahmini başlamada tarih de yazar; ilk maç oynanınca yalnız saat', () => {
+  const s = setup();
+  s.settings.plannedDate = dateIn(1);
+  s.settings.plannedStart = '20:00';
+  const V = viewer(s);
+  assert.match(V.renderWatch(), /<span>Tahmini başlama<\/span><span class="iz-eta-day">yarın<\/span><strong>20:00<\/strong>/);
+  assert.match(V.renderWatch({ wide: true }), /Tahmini başlama yarın 20:00/);
+
+  s.settings.plannedDate = dateIn(0);
+  assert.doesNotMatch(V.renderWatch(), /iz-eta-day/);
+
+  s.settings.plannedDate = dateIn(1);
+  playFirst(s, Date.now());
+  assert.doesNotMatch(V.renderWatch(), /iz-eta-day/);
+  assert.doesNotMatch(V.renderWatch({ wide: true }), /yarın/);
+});
+
+test('ana sayfada takımlar ve oyuncuları; sekmelerde takım sayfasını açar, başlamadan önce yalnız liste', () => {
+  const s = setup();
+  const V = viewer(s);
+  const names = (t) => t.playerIds.map((id) => s.players.find((p) => p.id === id).name).join(', ');
+  const html = V.renderWatch({ links: true });
+  for (const t of s.teams) {
+    assert.match(html, new RegExp(`data-action="team" data-team="${t.id}"[^>]*>[\\s\\S]*?${t.name}<\\/span><span class="iz-tl-players">${names(t)}<`));
+  }
+  assert.doesNotMatch(V.renderWatch(), /data-action="team"/);
+
+  const pre = T.createState();
+  T.addPlayers(pre, ['Emre', 'Can', 'Ali']);
+  T.applyDraw(pre, seeded(1));
+  const preHtml = viewer(pre).renderWatch();
+  assert.match(preHtml, /Takımlar<\/h2>[\s\S]*iz-tl-players[\s\S]*Nasıl oynanıyor\?/);
+  assert.doesNotMatch(preHtml, /data-action="team"/);
+
+  assert.doesNotMatch(viewer(T.createState()).renderWatch(), /Takımlar/);
 });
 
 test('kural metni ayarlara göre: devre sayısı, playoff, süreler', () => {
@@ -260,7 +301,7 @@ test('turnuva bitince şampiyon gösterilir', () => {
   assert.ok(html.includes(champ.name));
 });
 
-test('organizatörün cihazı bağlı değilse izleyici uyarılır; kendi bağlantısı yoksa yalnız "Güncelleniyor…"', () => {
+test('organizatörün cihazı bağlı değilse izleyici uyarılır (ilk maç başladıktan sonra); kendi bağlantısı yoksa yalnız "Güncelleniyor…"', () => {
   const s = setup();
   const now = Date.now();
   playFirst(s, now);
@@ -272,6 +313,8 @@ test('organizatörün cihazı bağlı değilse izleyici uyarılır; kendi bağla
   assert.doesNotMatch(V.renderWatch({ organizerAway: false }), away);
   assert.doesNotMatch(V.renderWatch({ organizerAway: true, updating: true }), away);
   assert.doesNotMatch(viewer(T.createState()).renderWatch({ organizerAway: true }), away);
+  assert.doesNotMatch(viewer(setup()).renderWatch({ organizerAway: true }), away);
+  assert.doesNotMatch(viewer(setup()).renderWatch({ organizerAway: true, wide: true }), away);
 });
 
 test('alt sekmeler: Maç, Fikstür, Puan; seçili olan işaretli', () => {
