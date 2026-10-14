@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { goalNotices } from '../src/goals.js';
+import { goalNotices, resultNotices } from '../src/notices.js';
 import { b64url, encrypt, publicKeyOf, toSubscription, vapidAuthorization, vapidKeys } from '../src/push.js';
 import { newVapidSecret, sampleState } from './helpers.js';
 
@@ -128,5 +128,45 @@ describe('gol bildirimleri', () => {
   test('eksik ya da bozuk veride çökmez', () => {
     const broken = sampleState({ matches: [null, { status: 'live', goals: [null, { id: 'x', team: 'Z' }] }, { status: 'live' }] });
     assert.deepEqual(goalNotices(sampleState(), broken), []);
+  });
+});
+
+describe('maç sonu bildirimleri', () => {
+  const match = (extra = {}) => ({ id: 'm1', stage: 'league', home: 'A', away: 'B', status: 'live', goals: [], pens: null, ...extra });
+  const state = (...matches) => sampleState({ matches });
+  const goals = [
+    { id: 'g1', team: 'A' },
+    { id: 'g2', team: 'B' },
+    { id: 'g3', team: 'A' },
+  ];
+
+  test('canlıyken biten maç: son skor', () => {
+    assert.deepEqual(resultNotices(state(match({ goals })), state(match({ goals, status: 'done' }))), [
+      { title: 'Maç bitti', body: 'Kırmızılar 2–1 Maviler' },
+    ]);
+  });
+
+  test('final: kazanan şampiyon olarak, penaltıyla bittiyse penaltı skoruyla', () => {
+    const fin = (extra) => match({ id: 'F', stage: 'final', goals: goals.slice(0, 2), ...extra });
+    assert.deepEqual(resultNotices(state(fin()), state(fin({ status: 'done', pens: { home: 3, away: 4 } }))), [
+      { title: 'Şampiyon: Maviler', body: 'Final · Kırmızılar 1–1 Maviler · pen. 3–4' },
+    ]);
+  });
+
+  test('kazananı belli olmayan final, maç sonu olarak bildirilir', () => {
+    const fin = (extra) => match({ id: 'F', stage: 'final', ...extra });
+    assert.deepEqual(resultNotices(state(fin()), state(fin({ status: 'done' }))), [{ title: 'Maç bitti', body: 'Kırmızılar 0–0 Maviler' }]);
+  });
+
+  test('yayının ilk hâli, iptal edilen ve sonradan düzeltilen maç bildirilmez', () => {
+    assert.deepEqual(resultNotices(null, state(match({ status: 'done' }))), []);
+    assert.deepEqual(resultNotices(state(match()), state(match({ status: 'pending' }))), []);
+    assert.deepEqual(resultNotices(state(match({ status: 'done' })), state(match({ status: 'done', goals }))), []);
+  });
+
+  test('eksik ya da bozuk veride çökmez', () => {
+    const before = sampleState({ matches: [null, { id: 'x', status: 'live' }] });
+    const after = sampleState({ matches: [null, { id: 'x', status: 'done' }, { id: 'x', status: 'done', home: 'A', away: 'Z', goals: [null], pens: { home: 'üç' } }] });
+    assert.deepEqual(resultNotices(before, after), [{ title: 'Maç bitti', body: 'Kırmızılar 0–0 Z' }]);
   });
 });

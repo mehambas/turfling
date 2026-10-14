@@ -14,8 +14,8 @@
   const PUSH_TEXT = {
     install: 'Bildirim için önce Paylaş → Ana Ekrana Ekle ile uygulamayı ekleyin, sonra ana ekrandan açın.',
     denied: 'Bildirim izni verilmedi. Telefonun ayarlarından açabilirsiniz.',
-    on: 'Gol bildirimleri açık',
-    off: 'Gol bildirimleri kapalı',
+    on: 'Gol ve sonuç bildirimleri açık',
+    off: 'Gol ve sonuç bildirimleri kapalı',
     failed: 'Bildirim ayarı değişmedi. İnternet bağlantısını kontrol edip tekrar deneyin.',
   };
   const TABS = { mac: 'Maç', fikstur: 'Fikstür', puan: 'Puan' };

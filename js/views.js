@@ -541,8 +541,8 @@
     }
 
     function bellButton(on) {
-      const label = `Gol bildirimleri ${on ? 'açık' : 'kapalı'}`;
-      return `<button class="iz-bell${on ? ' is-on' : ''}" data-action="push-toggle" aria-pressed="${on}" aria-label="Gol bildirimleri" title="${label}">${on ? ICONS.bell : ICONS.bellOff}</button>`;
+      const label = `Gol ve sonuç bildirimleri ${on ? 'açık' : 'kapalı'}`;
+      return `<button class="iz-bell${on ? ' is-on' : ''}" data-action="push-toggle" aria-pressed="${on}" aria-label="Gol ve sonuç bildirimleri" title="${label}">${on ? ICONS.bell : ICONS.bellOff}</button>`;
     }
 
     function watchTeams(links) {

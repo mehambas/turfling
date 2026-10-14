@@ -50,7 +50,7 @@ Herkesin aynı canlı skoru görmesi için ortak bir veri katmanı eklemek gerek
 
 ## Gol bildirimi
 
-İzleyici sayfasındaki zil, o yayının gollerini telefona bildirim olarak gönderir; bildirim telefonun kendi titreşimi ve sesiyle gelir.
+İzleyici sayfasındaki zil, o yayının gollerini, biten maçların sonucunu ve şampiyonu telefona bildirim olarak gönderir; bildirim telefonun kendi titreşimi ve sesiyle gelir.
 iPhone'da yalnız ana ekrana eklenmiş uygulamada çalışır (iOS 16.4+); Safari'de zile dokununca bu anlatılır.
 
 Yönetim ekranında *Kurulum → Canlı yayın → Süre bildirimi* açılırsa maçın son dakikasında ve süre bitince o cihaza da bildirim gelir, telefon kilitliyken de.

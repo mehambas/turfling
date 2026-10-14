@@ -123,6 +123,19 @@ describe('gol bildirimi', () => {
     assert.equal(arrivals('/sub/bitti').length, 1);
   });
 
+  test('biten final izleyiciye şampiyon olarak gider', async () => {
+    const t = await createTournament();
+    const client = await subscribe(t, '/sub/final');
+    const goals = [{ id: 'g1', team: 'A', playerId: 'p1', ms: 1000 }];
+    const final = (status) => sampleState({ matches: [{ id: 'F', stage: 'final', home: 'A', away: 'B', status, goals, pens: null }] });
+    await publish(t, final('live'));
+    await publish(t, final('done'));
+    const [push] = await waitFor(() => arrivals('/sub/final').length && arrivals('/sub/final'), 'şampiyon');
+    assert.deepEqual(JSON.parse(await client.decrypt(push.body)), { title: 'Şampiyon: Kırmızılar', body: 'Final · Kırmızılar 1–0 Maviler', url: `/izle#${t.id}` });
+    await settle();
+    assert.equal(arrivals('/sub/final').length, 1);
+  });
+
   test('bilinmeyen push adresi ve bozuk abonelik reddedilir', async () => {
     const t = await createTournament();
     const { keys } = await pushClient();

@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { goalNotices } from './goals.js';
+import { goalNotices, resultNotices } from './notices.js';
 import { publicKeyOf, sendPush, toSubscription, vapidKeys } from './push.js';
 import { timerAlerts, timerNotice } from './timer.js';
 
@@ -236,7 +236,8 @@ export class Turnuva extends DurableObject {
     const current = (await this.ctx.storage.get('rev')) ?? 0;
     if (baseRev !== current) throw new HttpError('stale', 409, await this.snapshot());
 
-    const notices = goalNotices(await this.ctx.storage.get('state'), state);
+    const before = await this.ctx.storage.get('state');
+    const notices = [...goalNotices(before, state), ...resultNotices(before, state)];
     const rev = current + 1;
     const serverTime = Date.now();
     // Organizatör saatiyle sunucu saati arasındaki fark; izleyici kalan süreyi bununla düzeltir.
