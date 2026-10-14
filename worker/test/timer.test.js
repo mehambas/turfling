@@ -29,7 +29,7 @@ describe('süre uyarıları', () => {
     ]);
   });
 
-  test('+1 ile uzatılan maçta anahtar da değişir', () => {
+  test('süresi değişen maçta anahtar da değişir', () => {
     const { alerts } = timerAlerts(state(match({ durationMin: 13 })), 0);
     assert.deepEqual(
       alerts.map((a) => [a.key, a.at]),

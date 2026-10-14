@@ -4749,7 +4749,6 @@ body.is-screen .live-bar {
     width: 100%;
     margin-top: 4px;
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr) 56px;
   }
 
   .lc-btn {

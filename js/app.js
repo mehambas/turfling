@@ -514,9 +514,7 @@
               <span class="lc-bar"><span data-timer-bar></span></span>
             </div>
             <div class="lc-btns">
-              <button class="lc-btn" data-action="timer-adjust" data-delta="-1" aria-label="Süreyi 1 dakika kısalt" title="Süreyi 1 dakika kısalt">−1</button>
               <button class="lc-btn lc-toggle" data-action="timer-toggle">${running ? `${ICONS.pause}Duraklat` : `${ICONS.play}Devam et`}</button>
-              <button class="lc-btn" data-action="timer-adjust" data-delta="1" aria-label="Süreyi 1 dakika uzat" title="Süreyi 1 dakika uzat">+1</button>
             </div>
           </div>
           ${goalButton(home, 'home')}
@@ -1323,6 +1321,8 @@
     { at: 0, dur: 0.12, freq: 880, vol: 0.25 },
     { at: 0.2, dur: 0.12, freq: 880, vol: 0.25 },
   ];
+  const SOUND_COUNTDOWN = [{ at: 0, dur: 0.08, freq: 880, vol: 0.25 }];
+  const COUNTDOWN_S = 10;
   const BUZZ_LAST_MINUTE = [200, 100, 200];
   const BUZZ_END = [500, 200, 500];
 
@@ -1343,6 +1343,8 @@
           play(SOUND_LAST_MINUTE);
           buzz(BUZZ_LAST_MINUTE);
         }
+        const sec = Math.ceil(rem / 1000);
+        if (sec >= 1 && sec <= COUNTDOWN_S && sec < Math.ceil(prev / 1000)) play(SOUND_COUNTDOWN);
         if (prev > 0 && rem <= 0) {
           play(SOUND_END);
           buzz(BUZZ_END);
@@ -1567,11 +1569,6 @@
     'timer-toggle'() {
       const m = liveMatch();
       if (m) commit(() => T.toggleClock(m, Date.now()));
-    },
-
-    'timer-adjust'(el) {
-      const m = liveMatch();
-      if (m) commit(() => (m.durationMin = Math.max(1, T.matchMinutes(state, m) + Number(el.dataset.delta))));
     },
 
     'goal-add'(el) {

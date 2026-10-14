@@ -54,7 +54,7 @@ Herkesin aynı canlı skoru görmesi için ortak bir veri katmanı eklemek gerek
 iPhone'da yalnız ana ekrana eklenmiş uygulamada çalışır (iOS 16.4+); Safari'de zile dokununca bu anlatılır.
 
 Yönetim ekranında *Kurulum → Canlı yayın → Süre bildirimi* açılırsa maçın son dakikasında ve süre bitince o cihaza da bildirim gelir, telefon kilitliyken de.
-Zamanı sunucu tutar; duraklatma, ±1 ve maçı bitirme bildirimi kendiliğinden kaydırır ya da iptal eder.
+Zamanı sunucu tutar; duraklatma ve maçı bitirme bildirimi kendiliğinden kaydırır ya da iptal eder.
 Yönetim ekranı açıkken Android'de bildirim gelmez, uyarıyı sayfa kendisi verir (ses ve titreşim); iPhone'da bildirim her zaman gelir.
 
 Worker bir kez VAPID anahtarı ister; anahtar yoksa zil ve süre bildirimi görünmez:

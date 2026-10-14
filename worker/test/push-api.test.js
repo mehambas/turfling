@@ -202,7 +202,7 @@ describe('süre bildirimi', () => {
     assert.equal(arrivals('/admin/durdu').length, 0);
   });
 
-  test('gönderilen uyarı sonraki değişiklikte tekrarlanmaz; uzatılan maçta yeniden gelir', async () => {
+  test('gönderilen uyarı sonraki değişiklikte tekrarlanmaz; süresi değişen maçta yeniden gelir', async () => {
     const t = await createTournament();
     await subscribeAdmin(t, '/admin/tekrar');
     const state = running(200);
@@ -214,7 +214,7 @@ describe('süre bildirimi', () => {
     assert.equal(arrivals('/admin/tekrar').length, 1);
 
     await publish(t, running(200, { durationMin: 3, elapsedMs: 2 * MIN - 200 }));
-    await waitFor(() => arrivals('/admin/tekrar').length === 2, '+1 sonrası uyarı');
+    await waitFor(() => arrivals('/admin/tekrar').length === 2, 'süre değişince uyarı');
   });
 
   test('aboneliği kapatan uyarı almaz', async () => {

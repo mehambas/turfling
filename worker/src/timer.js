@@ -2,7 +2,7 @@ const MINUTE = 60 * 1000;
 const STAGE_MINUTES = { league: 'leagueMin', playoff: 'playoffMin', final: 'finalMin' };
 
 // Maç saati yöneticinin cihazına göre tutulur; clockOffset onu sunucu saatine çevirir.
-// Anahtar maç süresini de içerir: +1 ile uzatılan maçta son dakika yeniden bildirilir.
+// Anahtar maç süresini de içerir: süresi değişen maçta son dakika yeniden bildirilir.
 export function timerAlerts(state, clockOffset) {
   const m = Array.isArray(state?.matches) ? state.matches.find((x) => x?.status === 'live') : null;
   if (!m) return { match: null, alerts: [] };

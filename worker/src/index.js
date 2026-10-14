@@ -251,7 +251,7 @@ export class Turnuva extends DurableObject {
     return json({ rev, serverTime });
   }
 
-  // Duraklatma, ±1 ve maç bitişi her gönderimde gelir; uyarılar her seferinde baştan hesaplanır.
+  // Duraklatma ve maç bitişi her gönderimde gelir; uyarılar her seferinde baştan hesaplanır.
   async planAlerts(state, clockOffset, now) {
     if (!this.env.VAPID_KEY) return;
     const { match, alerts } = timerAlerts(state, clockOffset);
