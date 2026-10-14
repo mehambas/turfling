@@ -35,14 +35,17 @@ test('yazı tipi dosyalarının hepsi önbellek listesinde', () => {
   for (const font of fonts) assert.ok(ASSETS.includes(font), `${font} sw.js listesinde yok`);
 });
 
-function serviceWorker() {
+function serviceWorker({ endpoint = 'https://fcm.googleapis.com/fcm/send/x' } = {}) {
   const listeners = {};
   const calls = [];
   const clients = [];
   const self = {
     location: { origin: 'https://hali-saha.example' },
     addEventListener: (type, fn) => (listeners[type] = fn),
-    registration: { showNotification: (...args) => calls.push(['show', ...args]) },
+    registration: {
+      showNotification: (...args) => calls.push(['show', ...args]),
+      pushManager: { getSubscription: async () => ({ endpoint }) },
+    },
     clients: {
       matchAll: async () => clients,
       openWindow: async (url) => calls.push(['open', url]),
@@ -66,6 +69,33 @@ test('push: gelen gol bildirim olarak gösterilir, bozuk veride varsayılan meti
   assert.equal(opts.body, 'Ali · Kırmızılar 1–1 Maviler');
   assert.equal(opts.data.url, '/izle#abcdefghij');
   assert.equal(fallback, 'Gol!');
+});
+
+const timerPush = { title: 'Son 1 dakika', body: 'Kırmızılar 1–0 Maviler', tag: 'sure-L1', url: '/', icon: '/icons/app-192.png', skipIfOpen: true };
+const page = (url, visibilityState) => ({ url: `https://hali-saha.example${url}`, visibilityState });
+
+test('süre uyarısı: yönetim ekranı görünmüyorsa bildirim, aynı maçın önceki uyarısının yerine', async () => {
+  const sw = serviceWorker();
+  sw.clients.push(page('/', 'hidden'), page('/izle#abcdefghij', 'visible'));
+  await sw.fire('push', { data: { json: () => timerPush } });
+  const [[, title, opts]] = sw.calls;
+  assert.equal(title, 'Son 1 dakika');
+  assert.equal(opts.tag, 'sure-L1');
+  assert.equal(opts.renotify, true);
+  assert.equal(opts.icon, '/icons/app-192.png');
+  assert.equal(opts.data.url, '/');
+});
+
+test('süre uyarısı: yönetim ekranı açıksa sayfa haber verir; Apple ise her push için bildirim ister', async () => {
+  const sw = serviceWorker();
+  sw.clients.push(page('/', 'visible'));
+  await sw.fire('push', { data: { json: () => timerPush } });
+  assert.deepEqual(sw.calls, []);
+
+  const apple = serviceWorker({ endpoint: 'https://web.push.apple.com/abc' });
+  apple.clients.push(page('/', 'visible'));
+  await apple.fire('push', { data: { json: () => timerPush } });
+  assert.equal(apple.calls.length, 1);
 });
 
 test('bildirime dokununca o yayının sayfası öne gelir, açık değilse açılır', async () => {

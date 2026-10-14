@@ -133,3 +133,97 @@ describe('gol bildirimi', () => {
     assert.equal((await send('/api/t/aaaaaaaaaa/push', 'POST', { endpoint: `${serviceOrigin}/x`, keys })).status, 404);
   });
 });
+
+describe('süre bildirimi', () => {
+  const MIN = 60 * 1000;
+
+  async function subscribeAdmin(t, path, token = t.adminToken) {
+    const client = await pushClient();
+    const res = await send(
+      `/api/t/${t.id}/admin-push`,
+      'POST',
+      { device: DEVICE, subscription: { endpoint: serviceOrigin + path, expirationTime: null, keys: client.keys } },
+      { authorization: `Bearer ${token}` },
+    );
+    return { res, client };
+  }
+
+  // Saat çalışıyor; `until` ms sonra son dakikaya girilir.
+  const running = (until, extra = {}) =>
+    sampleState({
+      matches: [{ id: 'm1', stage: 'league', home: 'A', away: 'B', status: 'live', goals: [], durationMin: 2, elapsedMs: MIN - until, runningSince: Date.now(), ...extra }],
+    });
+
+  test('abonelik yönetici linki ister', async () => {
+    const t = await createTournament();
+    assert.equal((await subscribeAdmin(t, '/admin/izinsiz', 'yanlis-token-aaaaaaaaaaaa')).res.status, 401);
+    const { keys } = await pushClient();
+    const bad = await send(`/api/t/${t.id}/admin-push`, 'POST', { device: DEVICE, subscription: { endpoint: 'https://example.com/x', keys } }, { authorization: `Bearer ${t.adminToken}` });
+    assert.equal(bad.status, 400);
+  });
+
+  test('son dakika yalnız yönetici cihazına gider', async () => {
+    const t = await createTournament();
+    const { res, client } = await subscribeAdmin(t, '/admin/son');
+    assert.equal(res.status, 200);
+    await subscribe(t, '/izle/son');
+    await publish(t, running(300));
+
+    const [push] = await waitFor(() => arrivals('/admin/son').length && arrivals('/admin/son'), 'son dakika');
+    assert.equal(push.headers.ttl, '60');
+    assert.deepEqual(JSON.parse(await client.decrypt(push.body)), {
+      title: 'Son 1 dakika',
+      body: 'Kırmızılar 0–0 Maviler',
+      tag: 'sure-m1',
+      url: '/',
+      icon: '/icons/app-192.png',
+      skipIfOpen: true,
+    });
+    await settle();
+    assert.equal(arrivals('/izle/son').length, 0);
+  });
+
+  test('süre bitince "Süre doldu"; geçmişte kalan son dakika gönderilmez', async () => {
+    const t = await createTournament();
+    const { client } = await subscribeAdmin(t, '/admin/bitis');
+    await publish(t, running(300 - MIN));
+    const [push] = await waitFor(() => arrivals('/admin/bitis').length && arrivals('/admin/bitis'), 'bitiş');
+    assert.equal(JSON.parse(await client.decrypt(push.body)).title, 'Süre doldu');
+    await settle();
+    assert.equal(arrivals('/admin/bitis').length, 1);
+  });
+
+  test('duraklatılan maç için uyarı gitmez', async () => {
+    const t = await createTournament();
+    await subscribeAdmin(t, '/admin/durdu');
+    await publish(t, running(400));
+    await publish(t, running(400, { runningSince: null }));
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(arrivals('/admin/durdu').length, 0);
+  });
+
+  test('gönderilen uyarı sonraki değişiklikte tekrarlanmaz; uzatılan maçta yeniden gelir', async () => {
+    const t = await createTournament();
+    await subscribeAdmin(t, '/admin/tekrar');
+    const state = running(200);
+    await publish(t, state);
+    await waitFor(() => arrivals('/admin/tekrar').length === 1, 'ilk uyarı');
+    state.matches[0].goals.push({ id: 'g1', team: 'A', playerId: null, ms: 1000 });
+    await publish(t, state);
+    await settle();
+    assert.equal(arrivals('/admin/tekrar').length, 1);
+
+    await publish(t, running(200, { durationMin: 3, elapsedMs: 2 * MIN - 200 }));
+    await waitFor(() => arrivals('/admin/tekrar').length === 2, '+1 sonrası uyarı');
+  });
+
+  test('aboneliği kapatan uyarı almaz', async () => {
+    const t = await createTournament();
+    await subscribeAdmin(t, '/admin/kapali');
+    const res = await send(`/api/t/${t.id}/admin-push`, 'DELETE', { endpoint: `${serviceOrigin}/admin/kapali` });
+    assert.equal(res.status, 200);
+    await publish(t, running(200));
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(arrivals('/admin/kapali').length, 0);
+  });
+});

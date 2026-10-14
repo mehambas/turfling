@@ -16,6 +16,8 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
   const isScreen = () => location.hash === '#ekran';
+  // iPhone'da push yalnız ana ekrana eklenmiş uygulamada var.
+  const needsInstall = navigator.standalone === false;
 
   let storageWarned = false;
   let state = loadState();
@@ -35,6 +37,7 @@
     rulesOpen: false,
   };
   const dialog = { kind: null, opts: null, resolve: null, matchId: null, pens: { home: '', away: '' }, error: '' };
+  const alerts = { id: null, key: null, reg: null, on: false, busy: false };
   let viewHtml = '';
   let sideHtml = '';
 
@@ -62,7 +65,7 @@
   }
 
   function loadPrefs() {
-    const base = { sound: true, theme: null };
+    const base = { sound: true, theme: null, alerts: null };
     try {
       return { ...base, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
     } catch {
@@ -217,6 +220,7 @@
     'live-share',
     'live-stop',
     'live-takeover',
+    'alerts-toggle',
   ]);
 
   function liveLinks() {
@@ -315,10 +319,20 @@
           <p class="sc-hint">Bu linki açan cihaz yönetimi devralıp skoru girebilir. Yalnız güvendiğin kişiye gönder.</p>
           <div class="btn-row">${buttons('admin')}</div>
         </div>
+        ${renderAlerts()}
         <div class="sc-foot live-foot"><span>Yeni turnuvalar da aynı linkten yayınlanır.</span><button class="btn btn-sm btn-text-danger" data-action="live-stop">Bu cihazda kapat</button></div>`;
     }
     liveCardHtml = `<section class="card setup-card share-card" id="yayin" aria-labelledby="h-live">${head}${body}</section>`;
     return liveCardHtml;
+  }
+
+  function renderAlerts() {
+    if (!alerts.key || !(alerts.reg || needsInstall)) return '';
+    return `<div class="live-link">
+        <span class="sc-label">Süre bildirimi</span>
+        <p class="sc-hint">${alerts.on ? 'Açık: son dakikada ve süre bitince bu cihaza bildirim gelir, telefon kilitliyken de.' : 'Son dakikada ve süre bitince bu cihaza bildirim gelsin, telefon kilitliyken de.'}</p>
+        <div class="btn-row"><button class="btn btn-sm" data-action="alerts-toggle">${alerts.on ? `${ICONS.bellOff}Bildirimi kapat` : `${ICONS.bell}Bildirimi aç`}</button></div>
+      </div>`;
   }
 
   function refreshLiveCard() {
@@ -330,6 +344,7 @@
   }
 
   function onLiveChange() {
+    if ((live?.config?.id ?? null) !== alerts.id) initAlerts();
     renderLiveChrome();
     refreshLiveCard();
   }
@@ -346,6 +361,50 @@
     if (dialog.kind === 'edit' && !match(dialog.matchId)) closeDialog(false);
     if (dialog.kind === 'goal' && (readOnly() || match(dialog.matchId)?.status !== 'live')) closeDialog(false);
     if (ui.goalPicker && !liveMatch()?.goals.some((g) => g.id === ui.goalPicker)) ui.goalPicker = null;
+  }
+
+  const fromB64url = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+
+  async function alertsRequest(c, method, body) {
+    const res = await fetch(`/api/t/${c.id}/admin-push`, {
+      method,
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${c.token}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`push ${res.status}`);
+  }
+
+  async function initAlerts() {
+    const c = live?.config;
+    Object.assign(alerts, { id: c?.id ?? null, key: null, reg: null, on: false });
+    if (!c || !('serviceWorker' in navigator)) return;
+    try {
+      const res = await fetch('/api/push-key', { cache: 'no-store' });
+      if (!res.ok) return;
+      const key = fromB64url((await res.json()).key);
+      let reg = null;
+      let sub = null;
+      if (!needsInstall && 'PushManager' in window) {
+        reg = await navigator.serviceWorker.ready;
+        sub = await reg.pushManager.getSubscription();
+      }
+      if (alerts.id !== c.id) return;
+      const on = !!sub && prefs.alerts === c.id && window.Notification?.permission === 'granted';
+      Object.assign(alerts, { key, reg, on });
+      // Push servisi aboneliği yenilemiş ya da sunucu kaydı kaybetmiş olabilir; her açılışta güncel abonelik gönderilir.
+      if (on) alertsRequest(c, 'POST', { device: c.device, subscription: sub }).catch(() => {});
+      refreshLiveCard();
+    } catch {}
+  }
+
+  function saveAlerts(id) {
+    prefs.alerts = id;
+    savePrefs();
+  }
+
+  async function dropAlerts(c) {
+    const sub = alerts.on && (await alerts.reg.pushManager.getSubscription());
+    if (sub) await alertsRequest(c, 'DELETE', { endpoint: sub.endpoint });
   }
 
   function liveNotice(n) {
@@ -1264,6 +1323,13 @@
     { at: 0, dur: 0.12, freq: 880, vol: 0.25 },
     { at: 0.2, dur: 0.12, freq: 880, vol: 0.25 },
   ];
+  const BUZZ_LAST_MINUTE = [200, 100, 200];
+  const BUZZ_END = [500, 200, 500];
+
+  // iOS'ta titreşim yok; Android'de sayfaya en az bir kez dokunulmuş olmalı.
+  function buzz(pattern) {
+    if (!isScreen()) navigator.vibrate?.(pattern);
+  }
 
   const lastRemaining = new Map();
   function tick() {
@@ -1273,8 +1339,14 @@
       const { m, rem, running } = clock;
       const prev = lastRemaining.get(m.id);
       if (prev != null && running) {
-        if (prev > MINUTE && rem <= MINUTE && rem > 0) play(SOUND_LAST_MINUTE);
-        if (prev > 0 && rem <= 0) play(SOUND_END);
+        if (prev > MINUTE && rem <= MINUTE && rem > 0) {
+          play(SOUND_LAST_MINUTE);
+          buzz(BUZZ_LAST_MINUTE);
+        }
+        if (prev > 0 && rem <= 0) {
+          play(SOUND_END);
+          buzz(BUZZ_END);
+        }
       }
       lastRemaining.set(m.id, rem);
       $('.live-card')?.classList.toggle('is-over', rem <= 0);
@@ -1746,7 +1818,10 @@
         ok: 'Kapat',
         danger: true,
       });
-      if (ok) live.stop();
+      if (!ok) return;
+      saveAlerts(null);
+      dropAlerts(live.config).catch(() => {});
+      live.stop();
     },
 
     async 'live-takeover'() {
@@ -1771,6 +1846,33 @@
       } catch {}
       if (!link) return toast('Bu bir yönetici linki değil', 'warn');
       joinLive(link);
+    },
+
+    async 'alerts-toggle'() {
+      if (needsInstall) return toast('Bildirim için önce Paylaş → Ana Ekrana Ekle ile uygulamayı ekle, ana ekrandan açıp yönetici linkiyle yayına bağlan.', 'warn');
+      const c = live?.config;
+      if (!c || !alerts.reg || alerts.busy) return;
+      alerts.busy = true;
+      try {
+        if (alerts.on) {
+          await dropAlerts(c);
+          saveAlerts(null);
+        } else {
+          // iOS izni yalnız dokunuşun hemen ardından sorar; izin isteğinden önce başka bir bekleme olmamalı.
+          if ((await Notification.requestPermission()) !== 'granted') return toast('Bildirim izni verilmedi. Telefonun ayarlarından açabilirsin.', 'warn');
+          const pm = alerts.reg.pushManager;
+          const sub = (await pm.getSubscription()) || (await pm.subscribe({ userVisibleOnly: true, applicationServerKey: alerts.key }));
+          await alertsRequest(c, 'POST', { device: c.device, subscription: sub });
+          saveAlerts(c.id);
+        }
+        alerts.on = !alerts.on;
+        toast(alerts.on ? 'Süre bildirimi açık' : 'Süre bildirimi kapalı', 'ok');
+      } catch {
+        toast('Bildirim ayarı değişmedi. İnternet bağlantısını kontrol edip tekrar dene.', 'warn');
+      } finally {
+        alerts.busy = false;
+        refreshLiveCard();
+      }
     },
 
     'live-open'() {
@@ -1989,6 +2091,7 @@
   T.resolveKnockouts(state);
   if (liveAvailable() && !isScreen()) {
     live = LiveSync.admin({ getState: () => state, onAdopt: adoptRemote, onNotice: liveNotice, onChange: onLiveChange });
+    initAlerts();
   }
   if (liveAvailable() && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   render();

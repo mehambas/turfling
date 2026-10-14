@@ -53,7 +53,11 @@ Herkesin aynı canlı skoru görmesi için ortak bir veri katmanı eklemek gerek
 İzleyici sayfasındaki zil, o yayının gollerini telefona bildirim olarak gönderir; bildirim telefonun kendi titreşimi ve sesiyle gelir.
 iPhone'da yalnız ana ekrana eklenmiş uygulamada çalışır (iOS 16.4+); Safari'de zile dokununca bu anlatılır.
 
-Worker bir kez VAPID anahtarı ister; anahtar yoksa zil görünmez:
+Yönetim ekranında *Kurulum → Canlı yayın → Süre bildirimi* açılırsa maçın son dakikasında ve süre bitince o cihaza da bildirim gelir, telefon kilitliyken de.
+Zamanı sunucu tutar; duraklatma, ±1 ve maçı bitirme bildirimi kendiliğinden kaydırır ya da iptal eder.
+Yönetim ekranı açıkken Android'de bildirim gelmez, uyarıyı sayfa kendisi verir (ses ve titreşim); iPhone'da bildirim her zaman gelir.
+
+Worker bir kez VAPID anahtarı ister; anahtar yoksa zil ve süre bildirimi görünmez:
 
 ```sh
 cd worker

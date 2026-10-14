@@ -88,15 +88,34 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data?.json() ?? {};
   } catch {}
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Gol!', {
-      body: data.body || '',
-      icon: '/icons/izle-192.png',
-      vibrate: [200, 100, 200],
-      data: { url: data.url || '/izle' },
-    }),
-  );
+  event.waitUntil(show(data));
 });
+
+async function show(data) {
+  const url = data.url || '/izle';
+  if (data.skipIfOpen && (await pageVisible(url)) && !(await applePush())) return;
+  return self.registration.showNotification(data.title || 'Gol!', {
+    body: data.body || '',
+    icon: data.icon || '/icons/izle-192.png',
+    tag: data.tag || '',
+    renotify: !!data.tag,
+    vibrate: [200, 100, 200],
+    data: { url },
+  });
+}
+
+// Süre uyarısını yönetim ekranı açıkken sayfa kendisi verir (ses, titreşim); bildirim üstüne binmesin.
+async function pageVisible(url) {
+  const { pathname } = new URL(url, self.location.origin);
+  const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  return list.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === pathname);
+}
+
+// Apple her push'ta bildirim ister; göstermeyen sitenin aboneliğini birkaç seferde iptal eder.
+async function applePush() {
+  const sub = await self.registration.pushManager.getSubscription();
+  return /(^|\.)push\.apple\.com$/.test(sub ? new URL(sub.endpoint).hostname : '');
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
