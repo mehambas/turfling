@@ -57,9 +57,9 @@ async function publish(t, state) {
   t.rev = (await res.json()).rev;
 }
 
-async function subscribe(t, path) {
+async function subscribe(t, path, lang) {
   const client = await pushClient();
-  const res = await send(`/api/t/${t.id}/push`, 'POST', { endpoint: serviceOrigin + path, expirationTime: null, keys: client.keys });
+  const res = await send(`/api/t/${t.id}/push`, 'POST', { endpoint: serviceOrigin + path, expirationTime: null, keys: client.keys, ...(lang ? { lang } : {}) });
   assert.equal(res.status, 200);
   return client;
 }
@@ -89,6 +89,18 @@ describe('gol bildirimi', () => {
       body: 'Ali · Kırmızılar 1–0 Maviler',
       url: `/izle#${t.id}`,
     });
+  });
+
+  test('her abone golü kendi dilinde alır; dili olmayan abonelik Türkçe kalır', async () => {
+    const t = await createTournament();
+    const en = await subscribe(t, '/sub/dil-en', 'en');
+    const tr = await subscribe(t, '/sub/dil-yok');
+    await publish(t, live([]));
+    await publish(t, live([{ id: 'g1', team: 'A', playerId: 'p1', ms: 60000, ownGoal: true }]));
+    const [toEn] = await waitFor(() => arrivals('/sub/dil-en').length && arrivals('/sub/dil-en'), 'push en');
+    const [toTr] = await waitFor(() => arrivals('/sub/dil-yok').length && arrivals('/sub/dil-yok'), 'push tr');
+    assert.deepEqual(JSON.parse(await en.decrypt(toEn.body)), { title: 'Goal! Kırmızılar', body: 'Ali (own goal) · Kırmızılar 1–0 Maviler', url: `/izle#${t.id}` });
+    assert.deepEqual(JSON.parse(await tr.decrypt(toTr.body)), { title: 'Gol! Kırmızılar', body: 'Ali (kendi kalesine) · Kırmızılar 1–0 Maviler', url: `/izle#${t.id}` });
   });
 
   test('ilk yayın ve golsüz değişiklik bildirim göndermez', async () => {

@@ -1,3 +1,5 @@
+import I18n from '../../js/i18n.js';
+
 const MINUTE = 60 * 1000;
 const STAGE_MINUTES = { league: 'leagueMin', playoff: 'playoffMin', final: 'finalMin' };
 
@@ -18,7 +20,7 @@ export function timerAlerts(state, clockOffset) {
   return { match: m.id, alerts };
 }
 
-export function timerNotice(state, alert) {
+export function timerNotice(state, alert, lang = 'tr') {
   const m = Array.isArray(state?.matches) ? state.matches.find((x) => x?.id === alert.match) : null;
   if (m?.status !== 'live') return null;
   const name = (id) => (Array.isArray(state.teams) ? state.teams.find((t) => t?.id === id)?.name : null) ?? id;
@@ -29,7 +31,7 @@ export function timerNotice(state, alert) {
     else if (g?.team === m.away) away++;
   }
   return {
-    title: alert.kind === 'last' ? 'Son 1 dakika' : 'Süre doldu',
+    title: alert.kind === 'last' ? I18n.translate(lang, 'Son 1 dakika') : I18n.translate(lang, 'Süre doldu'),
     body: `${name(m.home)} ${home}–${away} ${name(m.away)}`,
     tag: `sure-${m.id}`,
   };

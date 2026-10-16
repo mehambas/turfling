@@ -2,6 +2,7 @@
   'use strict';
 
   const T = window.Tournament;
+  const t = I18n.t;
   const CACHE_PREFIX = 'halisaha-izle-';
   const WIDE = matchMedia(Views.WIDE_QUERY);
   const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
@@ -12,13 +13,13 @@
   const PUSH_PREFIX = 'halisaha-bildirim-';
   const TOAST_MS = 4000;
   const PUSH_TEXT = {
-    install: 'Bildirim için önce Paylaş → Ana Ekrana Ekle ile uygulamayı ekleyin, sonra ana ekrandan açın.',
-    denied: 'Bildirim izni verilmedi. Telefonun ayarlarından açabilirsiniz.',
-    on: 'Gol ve sonuç bildirimleri açık',
-    off: 'Gol ve sonuç bildirimleri kapalı',
-    failed: 'Bildirim ayarı değişmedi. İnternet bağlantısını kontrol edip tekrar deneyin.',
+    install: t('Bildirim için önce Paylaş → Ana Ekrana Ekle ile uygulamayı ekleyin, sonra ana ekrandan açın.'),
+    denied: t('Bildirim izni verilmedi. Telefonun ayarlarından açabilirsiniz.'),
+    on: t('Gol ve sonuç bildirimleri açık'),
+    off: t('Gol ve sonuç bildirimleri kapalı'),
+    failed: t('Bildirim ayarı değişmedi. İnternet bağlantısını kontrol edip tekrar deneyin.'),
   };
-  const TABS = { mac: 'Maç', fikstur: 'Fikstür', puan: 'Puan' };
+  const TABS = { mac: t('Maç'), fikstur: t('Fikstür'), puan: I18n.tc('tab', 'Puan') };
   const EASE = 'cubic-bezier(0.2, 0, 0, 1)';
   const EASE_PUSH = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
@@ -135,7 +136,7 @@
     document.body.classList.toggle('is-wide', wide);
     document.body.classList.toggle('is-screen', wide);
     document.body.classList.toggle('is-tabs', tabs);
-    document.title = state ? `${V.tournamentName()} · Canlı` : 'Halı Saha Turnuvası · Canlı';
+    document.title = state ? t('{name} · Canlı', { name: V.tournamentName() }) : t('Turfling Canlı');
     const bell = !push.key ? null : needsInstall ? 'off' : push.reg ? (push.on ? 'on' : 'off') : null;
     const opts = { wide, notice, updating: !connected, organizerAway: !organizerOnline, full: !!document.fullscreenElement, flags, bell };
     if (tabs) {
@@ -171,7 +172,7 @@
     view.innerHTML = `<div class="iz-app">${Object.entries(TABS)
       .map(([tab, label]) => `<section class="iz-sec" data-sec="${tab}" role="tabpanel" aria-label="${label}"${tab === ui.tab ? '' : ' hidden'}>${root(tab, label)}</section>`)
       .join('')}</div>
-      <nav class="iz-tabbar" role="tablist" aria-label="Bölümler">${V.renderTabBar(ui.tab)}</nav>`;
+      <nav class="iz-tabbar" role="tablist" aria-label="${t('Bölümler')}">${V.renderTabBar(ui.tab)}</nav>`;
     nav = { tabbar: view.querySelector('.iz-tabbar'), sections: {}, roots: {} };
     for (const tab of Object.keys(TABS)) {
       nav.sections[tab] = view.querySelector(`[data-sec="${tab}"]`);
@@ -265,7 +266,7 @@
     const under = topPage(tab) || nav.roots[tab];
     under.insertAdjacentHTML(
       'afterend',
-      `<div class="iz-page is-pushed"><div class="iz-bar"><button class="iz-back" data-action="back">${Views.ICONS.back}Geri</button><span class="iz-bar-title"></span></div><div class="iz-scroll"></div><div class="iz-dim"></div></div>`,
+      `<div class="iz-page is-pushed"><div class="iz-bar"><button class="iz-back" data-action="back">${Views.ICONS.back}${t('Geri')}</button><span class="iz-bar-title"></span></div><div class="iz-scroll"></div><div class="iz-dim"></div></div>`,
     );
     const page = under.nextElementSibling;
     if (opener) openers.set(page, opener);
@@ -427,6 +428,8 @@
     if (!res.ok) throw new Error(`push ${res.status}`);
   }
 
+  const sendSubscription = (sub) => pushRequest('POST', { ...sub.toJSON(), lang: I18n.lang() });
+
   async function initPush() {
     if (!id || !('serviceWorker' in navigator)) return;
     try {
@@ -439,7 +442,7 @@
         push.on = !!sub && pushWanted() && window.Notification?.permission === 'granted';
         push.reg = reg;
         // Push servisi aboneliği yenilemiş ya da sunucu kaydı kaybetmiş olabilir; her açılışta güncel abonelik gönderilir.
-        if (push.on) pushRequest('POST', sub).catch(() => {});
+        if (push.on) sendSubscription(sub).catch(() => {});
       }
       render();
     } catch {}
@@ -458,7 +461,7 @@
         if ((await Notification.requestPermission()) !== 'granted') return say(PUSH_TEXT.denied);
         const pm = push.reg.pushManager;
         const sub = (await pm.getSubscription()) || (await pm.subscribe({ userVisibleOnly: true, applicationServerKey: push.key }));
-        await pushRequest('POST', sub);
+        await sendSubscription(sub);
       }
       push.on = !push.on;
       savePush(push.on);
@@ -548,7 +551,7 @@
   if (id) {
     const manifest = document.createElement('link');
     manifest.rel = 'manifest';
-    manifest.href = `/izle.webmanifest?id=${id}`;
+    manifest.href = `/izle.webmanifest?id=${id}&lang=${I18n.lang()}`;
     document.head.append(manifest);
     readCache();
   }

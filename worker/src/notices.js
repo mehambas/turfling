@@ -1,9 +1,10 @@
+import I18n from '../../js/i18n.js';
 import Tournament from '../../js/tournament.js';
 
 const name = (list, id) => (Array.isArray(list) ? list.find((x) => x?.id === id)?.name : null);
 
 // Yalnız canlı maçta yeni çıkan goller bildirilir; bitmiş bir maçın düzeltilmesi ya da yayının ilk hâli bildirim değildir.
-export function goalNotices(before, after) {
+export function goalNotices(before, after, lang = 'tr') {
   if (!before) return [];
   if (before.id && after.id && before.id !== after.id) return [];
   const known = new Set(before.matches.flatMap((m) => (Array.isArray(m?.goals) ? m.goals.map((g) => g?.id) : [])));
@@ -18,9 +19,9 @@ export function goalNotices(before, after) {
       else away++;
       if (known.has(g.id)) continue;
       const player = name(after.players, g.playerId);
-      const scorer = player && g.ownGoal ? `${player} (kendi kalesine)` : player;
+      const scorer = player && g.ownGoal ? I18n.translate(lang, '{player} (kendi kalesine)', { player }) : player;
       const line = `${name(after.teams, m.home) ?? m.home} ${home}–${away} ${name(after.teams, m.away) ?? m.away}`;
-      notices.push({ title: `Gol! ${name(after.teams, g.team) ?? g.team}`, body: scorer ? `${scorer} · ${line}` : line });
+      notices.push({ title: I18n.translate(lang, 'Gol! {team}', { team: name(after.teams, g.team) ?? g.team }), body: scorer ? `${scorer} · ${line}` : line });
     }
   }
   return notices;
@@ -40,7 +41,7 @@ function leagueChampion(state) {
 
 // Canlıyken biten maç bildirilir; iptal edilen ya da sonradan düzeltilen maç değil.
 // Final bir kazananla bittiyse iki bildirim yerine yalnız şampiyon bildirilir; final yoksa ligin son maçı için de öyle.
-export function resultNotices(before, after) {
+export function resultNotices(before, after, lang = 'tr') {
   if (!before) return [];
   if (before.id && after.id && before.id !== after.id) return [];
   const wasLive = new Set(before.matches.filter((m) => m?.status === 'live').map((m) => m.id));
@@ -57,16 +58,19 @@ export function resultNotices(before, after) {
       else if (g?.team === m.away) away++;
     }
     const pens = Number.isFinite(m.pens?.home) && Number.isFinite(m.pens?.away) ? m.pens : null;
-    const line = `${team(m.home)} ${home}–${away} ${team(m.away)}${pens ? ` · pen. ${pens.home}–${pens.away}` : ''}`;
+    const line = `${team(m.home)} ${home}–${away} ${team(m.away)}${pens ? I18n.translate(lang, ' · pen. {home}–{away}', pens) : ''}`;
     const [a, b] = home !== away || !pens ? [home, away] : [pens.home, pens.away];
     const winner = a > b ? m.home : b > a ? m.away : null;
-    if (m.stage === 'final' && winner) notices.push({ title: `Şampiyon: ${team(winner)}`, body: `Final · ${line}` });
+    if (m.stage === 'final' && winner) notices.push({ title: I18n.translate(lang, 'Şampiyon: {team}', { team: team(winner) }), body: I18n.translate(lang, 'Final · {line}', { line }) });
     else if (champ && m.stage === 'league') leagueLine = line;
-    else notices.push({ title: 'Maç bitti', body: line });
+    else notices.push({ title: I18n.translate(lang, 'Maç bitti'), body: line });
   }
   if (champ) {
-    const standing = `Ligi ${champ.pts} puanla birinci bitirdi`;
-    notices.push({ title: `Şampiyon: ${team(champ.id)}`, body: leagueLine ? `${standing} · Son maç: ${leagueLine}` : standing });
+    const standing = I18n.translate(lang, 'Ligi {pts} puanla birinci bitirdi', { pts: champ.pts });
+    notices.push({
+      title: I18n.translate(lang, 'Şampiyon: {team}', { team: team(champ.id) }),
+      body: leagueLine ? I18n.translate(lang, '{standing} · Son maç: {line}', { standing, line: leagueLine }) : standing,
+    });
   }
   return notices;
 }

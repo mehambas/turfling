@@ -7,6 +7,7 @@ test('demo stays off workers.dev, even with query override; local preview is exp
   assert.equal(demo.available({ hostname: 'hali-saha.mehambas91.workers.dev', search: '?demo=1' }), false);
   assert.equal(demo.available({ hostname: 'localhost', search: '' }), false);
   assert.equal(demo.available({ hostname: 'localhost', search: '?demo=1' }), true);
+  assert.equal(demo.available({ hostname: 'turfling.hamzabasaran.com', search: '' }), true);
 });
 
 test('demo has valid rosters, results and scorers, and cannot replace existing data', () => {

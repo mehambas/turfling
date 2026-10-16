@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Halı Saha Turnuvası</title>
+  <title>Turfling</title>
   <link rel="icon" href="icons/app-small.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/app-180.png">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Halı Saha">
+  <meta name="apple-mobile-web-app-title" content="Turfling">
   <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -18,17 +18,17 @@
     <div class="topbar-in">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span id="brand-title" class="brand-title">Halı Saha Turnuvası</span>
+        <span id="brand-title" class="brand-title" data-i18n>Halı Saha Turnuvası</span>
       </div>
-      <nav class="tabs" role="tablist" aria-label="Bölümler">
-        <button class="tab" role="tab" data-action="tab" data-tab="dashboard"><span class="tab-dot" aria-hidden="true"></span>Turnuva</button>
-        <button class="tab" role="tab" data-action="tab" data-tab="fixtures">Fikstür</button>
-        <button class="tab" role="tab" data-action="tab" data-tab="setup">Kurulum</button>
-        <button class="tab" role="tab" data-action="tab" data-tab="history">Geçmiş</button>
+      <nav class="tabs" role="tablist" aria-label="Bölümler" data-i18n-attr="aria-label">
+        <button class="tab" role="tab" data-action="tab" data-tab="dashboard"><span class="tab-dot" aria-hidden="true"></span><span data-i18n>Turnuva</span></button>
+        <button class="tab" role="tab" data-action="tab" data-tab="fixtures" data-i18n>Fikstür</button>
+        <button class="tab" role="tab" data-action="tab" data-tab="setup" data-i18n>Kurulum</button>
+        <button class="tab" role="tab" data-action="tab" data-tab="history" data-i18n>Geçmiş</button>
       </nav>
       <div class="tools">
         <button class="live-pill" id="live-pill" data-action="live-open" hidden></button>
-        <a class="icon-btn tool-screen" href="#ekran" target="_blank" aria-label="Yayın ekranını yeni pencerede aç" title="Yayın ekranı (TV / projektör)"></a>
+        <a class="icon-btn tool-screen" href="#ekran" target="_blank" aria-label="Yayın ekranını yeni pencerede aç" title="Yayın ekranı (TV / projektör)" data-i18n-attr="aria-label,title"></a>
         <button class="icon-btn" data-action="toggle-sound"></button>
         <button class="icon-btn" data-action="toggle-theme"></button>
       </div>
@@ -38,13 +38,14 @@
   <div class="live-bar" id="live-bar" role="status" hidden></div>
 
   <main id="view" class="view"></main>
-  <footer class="legal-footer"><span>Üç takım için turnuva takibi</span> · <a href="privacy.html">Gizlilik / Privacy</a> · <a href="https://hamzabasaran.com/impressum" rel="noreferrer">Impressum</a></footer>
+  <footer class="legal-footer"><span data-i18n>Üç takım için turnuva takibi</span> · <button type="button" class="lang-toggle" data-lang-toggle></button> · <a href="privacy.html" data-i18n>Gizlilik / Privacy</a> · <a href="https://hamzabasaran.com/impressum" rel="noreferrer">Impressum</a></footer>
 
   <dialog id="dialog" class="dialog"></dialog>
   <dialog id="sheet" class="iz-dialog" aria-labelledby="iz-sheet-title"></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <input type="file" id="import-file" accept="application/json,.json" hidden>
 
+  <script src="js/i18n.js"></script>
   <script src="js/tournament.js"></script>
   <script src="js/demo.js"></script>
   <script src="js/sync.js"></script>

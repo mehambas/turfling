@@ -11,6 +11,7 @@ const ASSETS = [
   '/privacy',
   '/css/style.css',
   '/css/izle.css',
+  '/js/i18n.js',
   '/js/tournament.js',
   '/js/demo.js',
   '/js/sync.js',

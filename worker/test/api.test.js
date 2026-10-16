@@ -249,7 +249,7 @@ describe('statik dosyalar', () => {
   test('uygulama sunulur', async () => {
     const res = await fetch(`${base}/`);
     assert.equal(res.status, 200);
-    assert.match(await res.text(), /<title>Halı Saha Turnuvası<\/title>/);
+    assert.match(await res.text(), /<title>Turfling<\/title>/);
     assert.equal((await fetch(`${base}/js/tournament.js`)).status, 200);
     assert.equal((await fetch(`${base}/fonts/fonts.css`)).status, 200);
   });
@@ -263,6 +263,15 @@ describe('statik dosyalar', () => {
     assert.equal(manifest.scope, '/izle');
     assert.ok(manifest.icons.some((i) => i.purpose === 'maskable'));
     assert.equal((await (await fetch(`${base}/izle.webmanifest?id=<script>`)).json()).start_url, '/izle');
+  });
+
+  test('izleyici manifestinin adı ve dili istenen dile göre', async () => {
+    const tr = await (await fetch(`${base}/izle.webmanifest?id=abcdefghjk`)).json();
+    assert.deepEqual([tr.name, tr.lang], ['Turfling Canlı', 'tr']);
+    const en = await (await fetch(`${base}/izle.webmanifest?id=abcdefghjk&lang=en`)).json();
+    assert.deepEqual([en.name, en.short_name, en.lang], ['Turfling Live', 'Turfling Live', 'en']);
+    const other = await (await fetch(`${base}/izle.webmanifest?id=abcdefghjk&lang=de`)).json();
+    assert.equal(other.lang, 'tr');
   });
 
   test('organizatör manifesti ve ikonlar sunulur', async () => {

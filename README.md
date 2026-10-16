@@ -1,12 +1,12 @@
-# Halı Saha Tournament
+# Turfling
 
-A local-first football tournament manager **for three teams**, with a Turkish interface. Plain HTML, CSS and JavaScript; no build step. Optional Cloudflare Workers hosting adds live scores, shared administration and push notifications.
+A local-first football tournament manager **for three teams**, in English and Turkish. Plain HTML, CSS and JavaScript; no build step. Optional Cloudflare Workers hosting adds live scores, shared administration and push notifications.
 
 ## Run locally
 
 Open `index.html` directly, or serve the repository with a static HTTP server. Data stays in that browser's localStorage. Fonts are bundled and a service worker supports offline use over HTTP(S).
 
-Use **Kurulum → Yedek → İndir** to download a JSON backup. Backups include the current tournament, permanent player pool and every archive. Import replaces the local collection after attempting to download a backup of existing data.
+Use **Setup → Backup → Download** (Turkish: Kurulum → Yedek → İndir) to download a JSON backup. Backups include the current tournament, permanent player pool and every archive. Import replaces the local collection after attempting to download a backup of existing data.
 
 ## Features
 
@@ -15,14 +15,18 @@ Use **Kurulum → Yedek → İndir** to download a JSON backup. Backups include 
 - League, optional playoff and final; configurable match lengths, rounds and breaks; standings, scorers, summaries and penalties.
 - Automatic match lineups with optional exceptions. Participation is counted per match, not by minutes played.
 - Archives, player totals, teammate/opponent history and corrections with explicit save/cancel. Normal-time results, shootouts, own goals and unattributed goals are counted separately.
-- **Yeni turnuva** archives a completed tournament, preserves the pool/history and clears attendance. Duplicate identities can be merged unless their match/team histories conflict. Legacy backups migrate without losing goals or identities.
+- **New tournament** (Yeni turnuva) archives a completed tournament, preserves the pool/history and clears attendance. Duplicate identities can be merged unless their match/team histories conflict. Legacy backups migrate without losing goals or identities.
 - TV/projector view, mobile viewer page, optional goal/result and timer notifications.
 
 The default format has six league matches (two rounds), a second-versus-third playoff and a final. League points are 3/1/0; ties use goal difference, goals scored, head-to-head results, then an explicit decision. Playoff and final can be disabled. Space pauses/resumes the live clock; Escape dismisses open panels.
 
+## Language
+
+The interface is in English and Turkish. A language chosen with the switch in the footer is remembered in that browser. Otherwise the portfolio address (`turfling.hamzabasaran.com`) follows the browser language (Turkish for a Turkish browser, English for everything else) and every other address, including workers.dev, opens in Turkish. `?lang=en` or `?lang=tr` sets the language, for example for local testing. Push notifications are sent in the language the subscribing device used.
+
 ## Live sharing and access
 
-In **Kurulum → Canlı yayın**, choose **Yayını başlat** to upload the collection. Subsequent tournaments reuse the same viewer and administrator links. Without live sharing, tournament data is local only.
+In **Setup → Live sharing** (Kurulum → Canlı yayın), choose **Start live sharing** (Yayını başlat) to upload the collection. Subsequent tournaments reuse the same viewer and administrator links. Without live sharing, tournament data is local only.
 
 **Save the administrator link using its Copy button.** The plain homepage does not identify your collection. Opening the administrator link in another browser restores the current tournament and private history. The application removes the key from the address bar after accepting it. There is no user account or lost-link recovery. Anyone holding the administrator link can edit or delete the collection.
 
@@ -76,7 +80,7 @@ Turkish and English privacy information is in `privacy.html`, linked from both i
 
 ## Portfolio demo
 
-`js/demo.js` holds the single `PORTFOLIO_HOSTS` allowlist. It stays empty until the hostname is approved. The demo button never appears on workers.dev, even with `?demo=1`. For localhost/127.0.0.1 preview, use `?demo=1`.
+`js/demo.js` holds the single `PORTFOLIO_HOSTS` allowlist: `turfling.hamzabasaran.com`. The demo button never appears on workers.dev, even with `?demo=1`. For localhost/127.0.0.1 preview, use `?demo=1`.
 
 The button creates 15 synthetic players, three drawn teams and three completed matches locally. It refuses to replace existing players, a pool, archives, matches or a live connection. Nothing is uploaded until the visitor explicitly enables live sharing.
 

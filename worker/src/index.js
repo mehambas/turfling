@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { goalNotices, resultNotices } from './notices.js';
 import { publicKeyOf, sendPush, toSubscription, vapidKeys } from './push.js';
 import { timerAlerts, timerNotice } from './timer.js';
+import I18n from '../../js/i18n.js';
 import Tournament from '../../js/tournament.js';
 
 const ID_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -10,6 +11,8 @@ const ID_PATTERN = new RegExp(`^[${ID_ALPHABET}]{${ID_LENGTH}}$`);
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_SUBSCRIPTION_BYTES = 4 * 1024;
+// Subscriptions from before the English UI carry no language and stay Turkish.
+const langOf = (value) => (I18n.LANGS.includes(value) ? value : 'tr');
 const MAX_SUBSCRIPTIONS = 500;
 const PUSH_PREFIX = 'push:';
 const ADMIN_PUSH_PREFIX = 'adminpush:';
@@ -76,13 +79,14 @@ async function readJson(request, maxBytes) {
 }
 
 // İzleyici linkinin id'si hash'te; ana ekrana eklenen uygulama onu yalnız manifestteki başlangıç adresinden öğrenir.
-function watchManifest(id) {
+function watchManifest(id, lang) {
   const icon = (src, extra = {}) => ({ src, sizes: '512x512', type: 'image/png', ...extra });
+  const name = I18n.translate(lang, 'Turfling Canlı');
   const manifest = {
     id: '/izle',
-    name: 'Halı Saha Canlı',
-    short_name: 'Halı Saha Canlı',
-    lang: 'tr',
+    name,
+    short_name: name,
+    lang,
     start_url: ID_PATTERN.test(id || '') ? `/izle#${id}` : '/izle',
     scope: '/izle',
     display: 'standalone',
@@ -103,7 +107,7 @@ export default {
   async fetch(request, env) {
     const { pathname, searchParams } = new URL(request.url);
 
-    if (pathname === '/izle.webmanifest') return watchManifest(searchParams.get('id'));
+    if (pathname === '/izle.webmanifest') return watchManifest(searchParams.get('id'), langOf(searchParams.get('lang')));
 
     if (pathname === '/api/push-key') return env.VAPID_KEY ? json({ key: publicKeyOf(env.VAPID_KEY) }) : fail('push_disabled', 404);
 
@@ -354,7 +358,7 @@ export class Turnuva extends DurableObject {
         entries = { ...this.libraryEntries(merged), libraryHash: fingerprint, libraryRev: ++libraryRev };
       }
     }
-    const notices = [...goalNotices(before, state), ...resultNotices(before, state)];
+    const notices = (lang) => [...goalNotices(before, state, lang), ...resultNotices(before, state, lang)];
     const rev = current + 1;
     const serverTime = Date.now();
     const contentHash = toHex(await sha256(JSON.stringify({ state: publicState(state), libraryHash: entries.libraryHash ?? await this.ctx.storage.get('libraryHash') })));
@@ -370,7 +374,7 @@ export class Turnuva extends DurableObject {
     await this.planAlerts(state, clockOffset, serverTime);
     await this.markSeen(serverTime);
     this.broadcast({ rev, libraryRev, state, clockOffset, holder: device, holderOnline: true, serverTime });
-    if (notices.length && this.env.VAPID_KEY) this.ctx.waitUntil(this.notify(notices, request.url));
+    if (this.env.VAPID_KEY && notices('tr').length) this.ctx.waitUntil(this.notify(notices, request.url));
     if (due) this.ctx.waitUntil(this.sendAlert(due));
     return json({ rev, libraryRev, serverTime });
   }
@@ -391,19 +395,22 @@ export class Turnuva extends DurableObject {
     const due = alerts.filter((a) => a.at <= now);
     if (!due.length) return null;
     await this.ctx.storage.put({ alerts: alerts.filter((a) => a.at > now), alertsSent: [...(stored.get('alertsSent') ?? []), ...due.map((a) => a.key)] });
-    return timerNotice(stored.get('state'), due.at(-1));
+    const state = stored.get('state');
+    const alert = due.at(-1);
+    return timerNotice(state, alert) ? (lang) => timerNotice(state, alert, lang) : null;
   }
 
   async sendAlert(notice) {
     const origin = await this.ctx.storage.get('origin');
-    if (origin) await this.send(ADMIN_PUSH_PREFIX, [{ ...notice, url: '/', icon: '/icons/app-192.png', skipIfOpen: true }], origin, ALERT_TTL_S);
+    if (origin) await this.send(ADMIN_PUSH_PREFIX, (lang) => [{ ...notice(lang), url: '/', icon: '/icons/app-192.png', skipIfOpen: true }], origin, ALERT_TTL_S);
   }
 
   async subscribe(request) {
     if (!this.env.VAPID_KEY) throw new HttpError('push_disabled', 404);
-    const sub = toSubscription(await readJson(request, MAX_SUBSCRIPTION_BYTES), this.env.PUSH_TEST_ORIGIN);
+    const body = await readJson(request, MAX_SUBSCRIPTION_BYTES);
+    const sub = toSubscription(body, this.env.PUSH_TEST_ORIGIN);
     if (!sub) throw new HttpError('bad_request', 400);
-    await this.saveSubscription(PUSH_PREFIX, sub, MAX_SUBSCRIPTIONS);
+    await this.saveSubscription(PUSH_PREFIX, { ...sub, lang: langOf(body.lang) }, MAX_SUBSCRIPTIONS);
     return json({ subscribed: true });
   }
 
@@ -411,10 +418,10 @@ export class Turnuva extends DurableObject {
   // VAPID'deki iletişim adresi için sitenin adresi burada saklanır.
   async subscribeAdmin(request) {
     if (!this.env.VAPID_KEY) throw new HttpError('push_disabled', 404);
-    const { subscription } = await this.readAdminRequest(request);
+    const { subscription, lang } = await this.readAdminRequest(request);
     const sub = toSubscription(subscription, this.env.PUSH_TEST_ORIGIN);
     if (!sub) throw new HttpError('bad_request', 400);
-    await this.saveSubscription(ADMIN_PUSH_PREFIX, sub, MAX_ADMIN_SUBSCRIPTIONS);
+    await this.saveSubscription(ADMIN_PUSH_PREFIX, { ...sub, lang: langOf(lang) }, MAX_ADMIN_SUBSCRIPTIONS);
     await this.ctx.storage.put('origin', new URL(request.url).origin);
     return json({ subscribed: true });
   }
@@ -435,17 +442,23 @@ export class Turnuva extends DurableObject {
   async notify(notices, requestUrl) {
     const { origin, pathname } = new URL(requestUrl);
     const url = `/izle#${pathname.split('/')[3]}`;
-    await this.send(PUSH_PREFIX, notices.map((notice) => ({ ...notice, url })), origin);
+    await this.send(PUSH_PREFIX, (lang) => notices(lang).map((notice) => ({ ...notice, url })), origin);
   }
 
-  async send(prefix, payloads, subject, ttl) {
+  // payloadsFor(lang) builds the messages once per language among the subscribers.
+  async send(prefix, payloadsFor, subject, ttl) {
     const subs = await this.ctx.storage.list({ prefix });
     this.vapid ??= vapidKeys(this.env.VAPID_KEY);
     const vapid = await this.vapid;
+    const built = new Map();
+    const payloadsOf = (lang) => {
+      if (!built.has(lang)) built.set(lang, payloadsFor(lang).map((payload) => JSON.stringify(payload)));
+      return built.get(lang);
+    };
     await Promise.allSettled(
       [...subs].map(async ([key, sub]) => {
-        for (const payload of payloads) {
-          const status = await sendPush(sub, JSON.stringify(payload), vapid, { subject, ttl });
+        for (const payload of payloadsOf(langOf(sub.lang))) {
+          const status = await sendPush(sub, payload, vapid, { subject, ttl });
           // Servis aboneliğin bittiğini söylüyorsa (uygulama silindi, izin geri alındı) bir daha denenmez.
           if (status === 404 || status === 410) return this.ctx.storage.delete(key);
           if (status >= 400) console.warn(`push ${status} ${new URL(sub.endpoint).host}`);

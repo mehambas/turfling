@@ -1,10 +1,9 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tournament.js'));
-  else root.TournamentDemo = factory(root.Tournament);
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (T) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tournament.js'), require('./i18n.js'));
+  else root.TournamentDemo = factory(root.Tournament, root.I18n);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (T, I18n) {
   'use strict';
-  // Add the approved portfolio hostname here after the product name is chosen.
-  const PORTFOLIO_HOSTS = [];
+  const PORTFOLIO_HOSTS = ['turfling.hamzabasaran.com'];
   function available(location) {
     return PORTFOLIO_HOSTS.includes(location.hostname) ||
       (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) && new URLSearchParams(location.search).get('demo') === '1');
@@ -15,8 +14,8 @@
   }
   function create() {
     const state = T.createState();
-    state.name = 'Örnek Turnuva';
-    T.addPlayers(state, Array.from({ length: 15 }, (_, i) => `Örnek Oyuncu ${i + 1}`));
+    state.name = I18n.t('Örnek Turnuva');
+    T.addPlayers(state, Array.from({ length: 15 }, (_, i) => I18n.t('Örnek Oyuncu {n}', { n: i + 1 })));
     state.players.forEach((p, i) => { p.pot = Math.floor(i / 3); p.goalkeeper = i < 3; });
     T.syncPool(state);
     T.applyDraw(state);

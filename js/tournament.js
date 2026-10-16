@@ -1,8 +1,7 @@
 (function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.Tournament = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./i18n.js'));
+  else root.Tournament = factory(root.I18n);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (I18n) {
   'use strict';
 
   const TEAM_IDS = ['A', 'B', 'C'];
@@ -42,12 +41,12 @@
       id: uid(),
       playerPool: [],
       archives: [],
-      name: 'Halı Saha Turnuvası',
+      name: I18n.t('Halı Saha Turnuvası'),
       players: [],
       teams: [
-        { id: 'A', name: 'Kırmızılar', color: 'red', playerIds: [] },
-        { id: 'B', name: 'Maviler', color: 'blue', playerIds: [] },
-        { id: 'C', name: 'Sarılar', color: 'yellow', playerIds: [] },
+        { id: 'A', name: I18n.t('Kırmızılar'), color: 'red', playerIds: [] },
+        { id: 'B', name: I18n.t('Maviler'), color: 'blue', playerIds: [] },
+        { id: 'C', name: I18n.t('Sarılar'), color: 'yellow', playerIds: [] },
       ],
       settings: { ...DEFAULT_SETTINGS },
       started: false,
@@ -144,17 +143,17 @@
 
   function mergePlayers(state, sourceId, targetId) {
     const target = state.playerPool.find((p) => p.id === targetId);
-    if (!target || sourceId === targetId || !state.playerPool.some((p) => p.id === sourceId)) return { error: 'Birleştirilecek iki farklı oyuncu seçin.' };
+    if (!target || sourceId === targetId || !state.playerPool.some((p) => p.id === sourceId)) return { error: I18n.t('Birleştirilecek iki farklı oyuncu seçin.') };
     const next = structuredClone(state);
     const replace = (ids) => [...new Set(ids.map((id) => id === sourceId ? targetId : id))];
     for (const t of [next, ...next.archives]) {
       const sourceTeam = t.teams.find((team) => team.playerIds.includes(sourceId));
       const targetTeam = t.teams.find((team) => team.playerIds.includes(targetId));
-      if (sourceTeam && targetTeam && sourceTeam.id !== targetTeam.id) return { error: 'Bu kayıtlar aynı turnuvada farklı takımlarda yer alıyor. Önce kadroları kontrol edin.' };
+      if (sourceTeam && targetTeam && sourceTeam.id !== targetTeam.id) return { error: I18n.t('Bu kayıtlar aynı turnuvada farklı takımlarda yer alıyor. Önce kadroları kontrol edin.') };
       for (const m of t.matches) {
         const lineups = matchLineups(t, m);
         if (Object.values(lineups).some((ids) => ids.includes(sourceId)) && Object.values(lineups).some((ids) => ids.includes(targetId)) &&
-          !Object.values(lineups).some((ids) => ids.includes(sourceId) && ids.includes(targetId))) return { error: 'Bu kayıtlar aynı maçta rakip görünüyor. Önce maç kadrosunu kontrol edin.' };
+          !Object.values(lineups).some((ids) => ids.includes(sourceId) && ids.includes(targetId))) return { error: I18n.t('Bu kayıtlar aynı maçta rakip görünüyor. Önce maç kadrosunu kontrol edin.') };
       }
       const hasTarget = t.players.some((p) => p.id === targetId);
       t.players = t.players.filter((p) => !hasTarget || p.id !== sourceId).map((p) => p.id === sourceId ? { ...p, id: targetId } : p);
@@ -323,7 +322,7 @@
     for (const m of activeMatches(state)) {
       const s = score(m);
       if (m.status === 'done' && m.stage !== 'league' && s.home === s.away &&
-        (!Number.isSafeInteger(m.pens?.home) || !Number.isSafeInteger(m.pens?.away) || m.pens.home < 0 || m.pens.away < 0 || m.pens.home === m.pens.away)) return 'Berabere biten eleme maçının penaltı sonucunu girin.';
+        (!Number.isSafeInteger(m.pens?.home) || !Number.isSafeInteger(m.pens?.away) || m.pens.home < 0 || m.pens.away < 0 || m.pens.home === m.pens.away)) return I18n.t('Berabere biten eleme maçının penaltı sonucunu girin.');
     }
     const trial = structuredClone(state);
     for (const stage of ['playoff', 'final']) {
@@ -332,7 +331,7 @@
       if (!m || !original || original.status === 'pending' || !activeMatches(state).includes(original)) continue;
       m.status = 'pending';
       resolveKnockouts(trial);
-      if (blockingTies(trial).length || m.home !== original.home || m.away !== original.away) return 'Bu skor, oynanmış eleme maçlarının eşleşmesini değiştiriyor. Önce sonraki aşamanın kayıtlarını kontrol edin.';
+      if (blockingTies(trial).length || m.home !== original.home || m.away !== original.away) return I18n.t('Bu skor, oynanmış eleme maçlarının eşleşmesini değiştiriyor. Önce sonraki aşamanın kayıtlarını kontrol edin.');
       Object.assign(m, structuredClone(original));
     }
     return null;

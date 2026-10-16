@@ -1,7 +1,7 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tournament.js'), require('./crests.js'));
-  else root.Views = factory(root.Tournament, root.Crests);
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (T, Crests) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tournament.js'), require('./crests.js'), require('./i18n.js'));
+  else root.Views = factory(root.Tournament, root.Crests, root.I18n);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (T, Crests, I18n) {
   'use strict';
 
   const MINUTE = T.MINUTE;
@@ -9,17 +9,20 @@
   const RING_LENGTH = 2 * Math.PI * 88;
   const WIDE_QUERY = '(min-width: 761px) and (min-height: 500px) and (orientation: landscape)';
 
+  // Varsayılan Türkçe adı taşıyan turnuvanın adı hiç değiştirilmemiştir; seçili dilde gösterilir.
+  const displayName = (name) => (name === DEFAULT_NAME ? I18n.t('Halı Saha Turnuvası') : name);
+
   const COLORS = {
-    red: { label: 'Kırmızı', plural: 'Kırmızılar', hex: '#e5484d' },
-    blue: { label: 'Mavi', plural: 'Maviler', hex: '#3e63dd' },
-    yellow: { label: 'Sarı', plural: 'Sarılar', hex: '#ffcf33' },
-    green: { label: 'Yeşil', plural: 'Yeşiller', hex: '#2f9e5b' },
-    orange: { label: 'Turuncu', plural: 'Turuncular', hex: '#f76b15' },
-    purple: { label: 'Mor', plural: 'Morlar', hex: '#8e4ec6' },
-    pink: { label: 'Pembe', plural: 'Pembeler', hex: '#e93d82' },
-    teal: { label: 'Turkuaz', plural: 'Turkuazlar', hex: '#12a594' },
-    white: { label: 'Beyaz', plural: 'Beyazlar', hex: '#f4f4f1' },
-    black: { label: 'Siyah', plural: 'Siyahlar', hex: '#2a2c31' },
+    red: { label: I18n.t('Kırmızı'), plural: I18n.t('Kırmızılar'), hex: '#e5484d' },
+    blue: { label: I18n.t('Mavi'), plural: I18n.t('Maviler'), hex: '#3e63dd' },
+    yellow: { label: I18n.t('Sarı'), plural: I18n.t('Sarılar'), hex: '#ffcf33' },
+    green: { label: I18n.t('Yeşil'), plural: I18n.t('Yeşiller'), hex: '#2f9e5b' },
+    orange: { label: I18n.t('Turuncu'), plural: I18n.t('Turuncular'), hex: '#f76b15' },
+    purple: { label: I18n.t('Mor'), plural: I18n.t('Morlar'), hex: '#8e4ec6' },
+    pink: { label: I18n.t('Pembe'), plural: I18n.t('Pembeler'), hex: '#e93d82' },
+    teal: { label: I18n.t('Turkuaz'), plural: I18n.t('Turkuazlar'), hex: '#12a594' },
+    white: { label: I18n.t('Beyaz'), plural: I18n.t('Beyazlar'), hex: '#f4f4f1' },
+    black: { label: I18n.t('Siyah'), plural: I18n.t('Siyahlar'), hex: '#2a2c31' },
   };
 
   // #e5484d zemin üstünde beyaz "+ Gol" yazısı yeterince okunmuyor.
@@ -107,7 +110,7 @@
   }
 
   function fmtTime(ts) {
-    return ts == null ? '–' : new Date(ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return ts == null ? '–' : new Date(ts).toLocaleTimeString(I18n.locale(), { hour: '2-digit', minute: '2-digit' });
   }
 
   const goalMinute = (g) => (g.ms == null ? '' : `${Math.floor(g.ms / MINUTE) + 1}'`);
@@ -118,19 +121,19 @@
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     const diff = Math.round((d - today) / (24 * 60 * MINUTE));
-    if (diff === 0) return 'bugün';
-    if (diff === 1) return 'yarın';
+    if (diff === 0) return I18n.t('bugün');
+    if (diff === 1) return I18n.t('yarın');
     const year = d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {};
-    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long', ...year });
+    return d.toLocaleDateString(I18n.locale(), { day: 'numeric', month: 'long', weekday: 'long', ...year });
   }
 
-  const withTime = (day, time) => (time ? `${day}${day === 'bugün' || day === 'yarın' ? ' ' : ', '}${time}` : day);
+  const withTime = (day, time) => (time ? `${day}${day === I18n.t('bugün') || day === I18n.t('yarın') ? ' ' : ', '}${time}` : day);
 
   function startText(s, now = Date.now()) {
     const time = /^\d{1,2}:\d{2}$/.test(s.plannedStart || '') ? s.plannedStart : '';
     const day = T.plannedDay(s, now);
-    if (day == null) return time ? `Başlangıç: ${time}` : '';
-    return `Başlangıç: ${withTime(dayName(day, now), time)}`;
+    if (day == null) return time ? I18n.t('Başlangıç: {when}', { when: time }) : '';
+    return I18n.t('Başlangıç: {when}', { when: withTime(dayName(day, now), time) });
   }
 
   const TIMES = { 1: 'bir', 2: 'iki', 3: 'üç' };
@@ -139,27 +142,33 @@
     const fin = T.hasFinal(s);
     const po = T.hasPlayoff(s);
     const r = s.leagueRounds;
-    const who = `Herkes herkesle ${TIMES[r] || r} kez oynar`;
-    const steps = [{ key: 'league', name: 'Lig', min: s.leagueMin, who: fin ? who : `${who}, 1.si şampiyon` }];
-    if (po) steps.push({ key: 'playoff', name: 'Playoff', min: s.playoffMin, who: 'Lig 2.si – 3.sü' });
-    if (fin) steps.push({ key: 'final', name: 'Final', min: s.finalMin, who: po ? 'Lig 1.si – playoff galibi' : 'Lig 1.si – 2.si' });
-    const points = 'Galibiyet 3, beraberlik 1, mağlubiyet 0 puan';
+    const who = I18n.t('Herkes herkesle {times} kez oynar', { times: TIMES[r] || r, n: r });
+    const steps = [{ key: 'league', name: I18n.t('Lig'), min: s.leagueMin, who: fin ? who : I18n.t('{who}, 1.si şampiyon', { who }) }];
+    if (po) steps.push({ key: 'playoff', name: I18n.t('Playoff'), min: s.playoffMin, who: I18n.t('Lig 2.si – 3.sü') });
+    if (fin) steps.push({ key: 'final', name: I18n.t('Final'), min: s.finalMin, who: po ? I18n.t('Lig 1.si – playoff galibi') : I18n.t('Lig 1.si – 2.si') });
+    const points = I18n.t('Galibiyet 3, beraberlik 1, mağlubiyet 0 puan');
+    let draw = I18n.t('Öyle kalır, iki takım da 1 puan alır.');
+    let rule = I18n.t('Final yok, lig 1.si şampiyon');
+    if (fin) {
+      draw = po ? I18n.t('Ligde öyle kalır; playoff ve finalde penaltı.') : I18n.t('Ligde öyle kalır; finalde penaltı.');
+      rule = po ? I18n.t('Playoff ve finalde beraberlikte penaltı') : I18n.t('Finalde beraberlikte penaltı');
+    }
     return {
       steps,
       summary: steps.map((x) => x.name).join(' › '),
-      meta: `${r > 1 ? `${r} devre, ` : ''}${r * 3} maç · her maçta bir takım dinlenir`,
-      draw: fin ? `Ligde öyle kalır; ${po ? 'playoff ve finalde' : 'finalde'} penaltı.` : 'Öyle kalır, iki takım da 1 puan alır.',
-      tvLine: fin ? `${points} · ${po ? 'Playoff ve finalde' : 'Finalde'} beraberlikte penaltı` : `${points} · Final yok, lig 1.si şampiyon`,
+      meta: `${r > 1 ? `${I18n.t('{n} devre', { n: r })}, ` : ''}${I18n.t('{n} maç', { n: r * 3 })} · ${I18n.t('her maçta bir takım dinlenir')}`,
+      draw,
+      tvLine: `${points} · ${rule}`,
     };
   }
 
   function standingZones(s) {
-    if (!T.hasFinal(s)) return { zones: ['final', 'out', 'out'], note: '1. şampiyon olur' };
-    if (T.hasPlayoff(s)) return { zones: ['final', 'playoff', 'playoff'], note: '1. finale direkt · 2. ve 3. playoff' };
-    return { zones: ['final', 'final', 'out'], note: '1. ve 2. finalde' };
+    if (!T.hasFinal(s)) return { zones: ['final', 'out', 'out'], note: I18n.t('1. şampiyon olur') };
+    if (T.hasPlayoff(s)) return { zones: ['final', 'playoff', 'playoff'], note: I18n.t('1. finale direkt · 2. ve 3. playoff') };
+    return { zones: ['final', 'final', 'out'], note: I18n.t('1. ve 2. finalde') };
   }
 
-  const RANKS = ['1.si', '2.si', '3.sü'];
+  const RANKS = [I18n.t('Lig 1.si'), I18n.t('Lig 2.si'), I18n.t('Lig 3.sü')];
 
   // Kutu yerinde açılıp kapanır: yeniden çizim geçişi yarıda keserdi. Sonraki çizim aynı hâli zaten üretir.
   function toggleRules(btn) {
@@ -254,9 +263,9 @@
   }
 
   const WATCH_NOTICES = {
-    connecting: ['Canlı yayın', 'Bağlanıyor…', ''],
-    notfound: ['Canlı yayın', 'Yayın bulunamadı', 'Link eksik ya da hatalı. Organizatörden linki yeniden iste.'],
-    empty: ['Hoş geldiniz', DEFAULT_NAME, 'Turnuva henüz başlamadı'],
+    connecting: [I18n.t('Canlı yayın'), I18n.t('Bağlanıyor…'), ''],
+    notfound: [I18n.t('Canlı yayın'), I18n.t('Yayın bulunamadı'), I18n.t('Link eksik ya da hatalı. Organizatörden linki yeniden iste.')],
+    empty: [I18n.t('Hoş geldiniz'), I18n.t('Halı Saha Turnuvası'), I18n.t('Turnuva henüz başlamadı')],
   };
 
   function create(getState) {
@@ -267,13 +276,13 @@
     const findStage = (stage, list = getState().matches) => list.find((m) => m.stage === stage) || null;
     const match = (id) => getState().matches.find((m) => m.id === id) || null;
     const estimates = (st) => Object.fromEntries(T.schedule(st).items.map((i) => [i.id, i]));
-    const tournamentName = () => getState()?.name.trim() || DEFAULT_NAME;
+    const tournamentName = () => displayName(getState()?.name.trim() || DEFAULT_NAME);
 
     // Yalnız ilk maç için: turnuva başka bir gün başlıyorsa saat tek başına yanıltır.
     function firstMatchDay(it) {
       if (!it || getState().matches.some((m) => m.startedAt)) return '';
       const day = dayName(it.estStart);
-      return day === 'bugün' ? '' : day;
+      return day === I18n.t('bugün') ? '' : day;
     }
 
     const rosterTeams = () => getState().teams.filter((t) => t.playerIds.length);
@@ -289,8 +298,8 @@
     }
 
     function matchTitle(m, list = getState().matches) {
-      if (m.stage === 'league') return `${list.filter((x) => x.stage === 'league').indexOf(m) + 1}. maç`;
-      return m.stage === 'playoff' ? 'Playoff' : 'Final';
+      if (m.stage === 'league') return I18n.t('{n}. maç', { n: list.filter((x) => x.stage === 'league').indexOf(m) + 1 });
+      return m.stage === 'playoff' ? I18n.t('Playoff') : I18n.t('Final');
     }
 
     function matchLabel(m) {
@@ -299,9 +308,9 @@
     }
 
     function placeholder(m, side) {
-      if (m.stage === 'playoff') return side === 'home' ? 'Lig 2.si' : 'Lig 3.sü';
-      if (side === 'home') return 'Lig 1.si';
-      return T.hasPlayoff(getState().settings) ? 'Playoff galibi' : 'Lig 2.si';
+      if (m.stage === 'playoff') return side === 'home' ? I18n.t('Lig 2.si') : I18n.t('Lig 3.sü');
+      if (side === 'home') return I18n.t('Lig 1.si');
+      return T.hasPlayoff(getState().settings) ? I18n.t('Playoff galibi') : I18n.t('Lig 2.si');
     }
 
     function teamName(id, m, side, { cls = '', end = false } = {}) {
@@ -313,15 +322,18 @@
 
     function lastResult(m) {
       const s = T.score(m);
-      return `${esc(team(m.home)?.name)} ${s.home}–${s.away} ${esc(team(m.away)?.name)}${m.pens ? ` (pen. ${m.pens.home}–${m.pens.away})` : ''}`;
+      return `${esc(team(m.home)?.name)} ${s.home}–${s.away} ${esc(team(m.away)?.name)}${m.pens ? ` (${I18n.t('pen.')} ${m.pens.home}–${m.pens.away})` : ''}`;
     }
+
+    const scoreLabel = (m, s) =>
+      I18n.t('Skor: {home} {homeGoals}, {away} {awayGoals}', { home: esc(team(m.home)?.name), homeGoals: s.home, away: esc(team(m.away)?.name), awayGoals: s.away });
 
     function goalList(m, teamId) {
       return m.goals
         .filter((g) => !teamId || g.team === teamId)
         .map((g) => {
           const p = player(g.playerId);
-          return p ? `${esc(p.name)}${g.ownGoal ? ' (k.k.)' : ''} ${goalMinute(g)}` : goalMinute(g);
+          return p ? `${esc(p.name)}${g.ownGoal ? ` (${I18n.t('k.k.')})` : ''} ${goalMinute(g)}` : goalMinute(g);
         })
         .filter(Boolean)
         .join(' · ');
@@ -345,7 +357,7 @@
 
     function scorerName(g) {
       const p = player(g.playerId);
-      return p ? `${esc(p.name)}${g.ownGoal ? ' (k.k.)' : ''}` : 'Bilinmiyor';
+      return p ? `${esc(p.name)}${g.ownGoal ? ` (${I18n.t('k.k.')})` : ''}` : I18n.t('Bilinmiyor');
     }
 
     function sideScorers(events, side) {
@@ -368,12 +380,11 @@
     function outcomeText(m) {
       if (m.status !== 'done') return '';
       const w = T.winnerOf(m);
-      if (!w) return 'Berabere';
+      if (!w) return I18n.t('Berabere');
       const name = esc(team(w)?.name);
-      const how = m.pens ? ' penaltılarla' : '';
-      if (m.stage === 'final') return `${name}${how} şampiyon oldu`;
-      if (m.stage === 'playoff') return `${name}${how} finale çıktı`;
-      return `${name} kazandı`;
+      if (m.stage === 'final') return m.pens ? I18n.t('{name} penaltılarla şampiyon oldu', { name }) : I18n.t('{name} şampiyon oldu', { name });
+      if (m.stage === 'playoff') return m.pens ? I18n.t('{name} penaltılarla finale çıktı', { name }) : I18n.t('{name} finale çıktı', { name });
+      return I18n.t('{name} kazandı', { name });
     }
 
     function renderMatchSummary(id, { links = false, titleId = '' } = {}) {
@@ -393,10 +404,10 @@
         return `<div class="ms-team ms-${k}${cls}${t ? '' : ' is-tbd'}"${t ? ` style="${teamStyle(t)}"` : ''}>${head}${scorers ? `<ol class="ms-scorers">${scorers}</ol>` : ''}</div>`;
       };
       let when = '';
-      if (m.status === 'done') when = `${fmtTime(m.startedAt)} – ${fmtTime(m.endedAt)} · ${T.matchMinutes(state, m)} dk`;
-      else if (m.status === 'live') when = '<span class="tag-live">Canlı</span>';
-      else when = 'Henüz oynanmadı';
-      const label = played ? `Skor: ${esc(team(m.home)?.name)} ${s.home}, ${esc(team(m.away)?.name)} ${s.away}` : 'Henüz oynanmadı';
+      if (m.status === 'done') when = `${fmtTime(m.startedAt)} – ${fmtTime(m.endedAt)} · ${I18n.t('{n} dk', { n: T.matchMinutes(state, m) })}`;
+      else if (m.status === 'live') when = `<span class="tag-live">${I18n.t('Canlı')}</span>`;
+      else when = I18n.t('Henüz oynanmadı');
+      const label = played ? scoreLabel(m, s) : I18n.t('Henüz oynanmadı');
       const score = played ? `<span>${s.home}</span><span class="ms-dash">–</span><span>${s.away}</span>` : '<span class="ms-dash">–</span>';
       const outcome = outcomeText(m);
       const timeline = events
@@ -410,12 +421,12 @@
         .join('');
       let goals = '';
       if (played) {
-        goals = `<section class="ms-card" aria-label="Goller"><h3 class="ms-h">Goller</h3>${timeline ? `<ol class="ms-tl">${timeline}</ol>` : '<p class="ms-none">Gol yok</p>'}</section>`;
+        goals = `<section class="ms-card" aria-label="${I18n.t('Goller')}"><h3 class="ms-h">${I18n.t('Goller')}</h3>${timeline ? `<ol class="ms-tl">${timeline}</ol>` : `<p class="ms-none">${I18n.t('Gol yok')}</p>`}</section>`;
       }
       return `<div class="ms">
         <div class="ms-top"><h2 class="ms-kicker"${titleId ? ` id="${titleId}"` : ''}>${watchKicker(m)}</h2><span class="ms-when">${when}</span></div>
         <div class="ms-board">${side('home')}<div class="ms-score" role="img" aria-label="${label}">${score}</div>${side('away')}</div>
-        ${m.pens ? `<p class="ms-pens">Penaltılar ${m.pens.home}–${m.pens.away}</p>` : ''}
+        ${m.pens ? `<p class="ms-pens">${I18n.t('Penaltılar {home}–{away}', m.pens)}</p>` : ''}
         ${outcome ? `<p class="ms-outcome">${outcome}</p>` : ''}
         ${goals}
       </div>`;
@@ -428,7 +439,9 @@
       const players = t.playerIds.map(player).filter(Boolean).map((p) => `<span>${esc(p.name)}</span>`).join('');
       const { list } = T.topScorers(state);
       const best = list.filter((x) => x.goals === list[0]?.goals);
-      const line = T.hasFinal(state.settings) ? `Final: ${lastResult(fin)}` : `Ligi ${T.computeStandings(state, { includeLive: false }).rows[0].pts} puanla birinci bitirdi`;
+      const line = T.hasFinal(state.settings)
+        ? I18n.t('Final: {result}', { result: lastResult(fin) })
+        : I18n.t('Ligi {pts} puanla birinci bitirdi', { pts: T.computeStandings(state, { includeLive: false }).rows[0].pts });
       return { t, players, best, line };
     }
 
@@ -445,14 +458,14 @@
       const tied = new Set(T.leagueDone(state) ? unresolved.flat() : []);
       const gd = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
       return `<section class="card side-card" aria-labelledby="h-table">
-      <h2 class="card-title" id="h-table">Puan durumu</h2>
+      <h2 class="card-title" id="h-table">${I18n.t('Puan durumu')}</h2>
       <table class="standings">
-        <thead><tr><th><span class="sr">Sıra</span></th><th><span class="sr">Takım</span></th><th title="Oynanan" abbr="Oynanan">O</th><th title="Averaj" abbr="Averaj">Av</th><th title="Puan" abbr="Puan">P</th></tr></thead>
+        <thead><tr><th><span class="sr">${I18n.t('Sıra')}</span></th><th><span class="sr">${I18n.t('Takım')}</span></th><th title="${I18n.t('Oynanan')}" abbr="${I18n.t('Oynanan')}">${I18n.t('O')}</th><th title="${I18n.t('Averaj')}" abbr="${I18n.t('Averaj')}">${I18n.t('Av')}</th><th title="${I18n.t('Puan')}" abbr="${I18n.t('Puan')}">${I18n.t('P')}</th></tr></thead>
         <tbody>${rows
           .map((r, i) => {
             const t = team(r.team);
             return `<tr>
-              <td><span class="rank rank-${zones[i]}">${i + 1}</span>${tied.has(r.team) ? '<span class="tie" title="Eşitlik henüz çözülmedi">=</span>' : ''}</td>
+              <td><span class="rank rank-${zones[i]}">${i + 1}</span>${tied.has(r.team) ? TIE_MARK : ''}</td>
               <td>${teamName(t.id)}</td>
               <td>${r.played}</td><td>${gd(r.gd)}</td><td class="pts">${r.pts}</td>
             </tr>`;
@@ -467,11 +480,11 @@
       const groups = [];
       const rounds = Math.max(0, ...st.matches.map((m) => m.round || 0));
       for (let r = 1; r <= rounds; r++) {
-        groups.push({ title: rounds > 1 ? `Lig · ${r}. devre` : 'Lig', matches: st.matches.filter((m) => m.stage === 'league' && m.round === r) });
+        groups.push({ title: rounds > 1 ? I18n.t('Lig · {n}. devre', { n: r }) : I18n.t('Lig'), matches: st.matches.filter((m) => m.stage === 'league' && m.round === r) });
       }
       for (const [stage, title] of [
-        ['playoff', 'Playoff'],
-        ['final', 'Final'],
+        ['playoff', I18n.t('Playoff')],
+        ['final', I18n.t('Final')],
       ]) {
         groups.push({ title, matches: st.matches.filter((m) => m.stage === stage) });
       }
@@ -490,16 +503,17 @@
       else if (champ) body = screenChampion(champ);
       else body = screenBreak(est);
       const next = live ? T.activeMatches(state).find((m) => m.status === 'pending') : null;
+      const fullLabel = full ? I18n.t('Tam ekrandan çık') : I18n.t('Tam ekran');
       return `<div class="tv">
       ${TV_LINES}
       <div class="tv-body">
         <header class="tv-head">
           <div class="tv-brand"><span class="tv-mark">${ICONS.brand}</span><span class="tv-brand-name">${esc(tournamentName())}</span></div>
-          <div class="tv-status">${live ? `<span class="tag-live">Canlı</span><span class="tv-no">${matchLabel(live)}</span>` : ''}</div>
+          <div class="tv-status">${live ? `<span class="tag-live">${I18n.t('Canlı')}</span><span class="tv-no">${matchLabel(live)}</span>` : ''}</div>
           <div class="tv-tools">
-            ${sc && !champ ? `<span class="tv-end">Bitiş <strong>${fmtTime(sc.estEnd)}</strong></span>` : ''}
-            ${state.started ? `<button class="tv-btn" data-action="screen-fixtures" aria-haspopup="dialog">${ICONS.list}Fikstür</button>` : ''}
-            <button class="tv-btn tv-icon" data-action="toggle-fullscreen" aria-label="${full ? 'Tam ekrandan çık' : 'Tam ekran'}" title="${full ? 'Tam ekrandan çık' : 'Tam ekran'}">${full ? ICONS.compress : ICONS.expand}</button>
+            ${sc && !champ ? `<span class="tv-end">${I18n.t('Bitiş')} <strong>${fmtTime(sc.estEnd)}</strong></span>` : ''}
+            ${state.started ? `<button class="tv-btn" data-action="screen-fixtures" aria-haspopup="dialog">${ICONS.list}${I18n.t('Fikstür')}</button>` : ''}
+            <button class="tv-btn tv-icon" data-action="toggle-fullscreen" aria-label="${fullLabel}" title="${fullLabel}">${full ? ICONS.compress : ICONS.expand}</button>
           </div>
           ${status ? `<div class="tv-alert">${status}</div>` : ''}
         </header>
@@ -525,7 +539,7 @@
       </div>`;
       return `<div class="tv-board">
         ${side(home, 'tv-home')}
-        <div class="tv-score" role="img" aria-label="Skor: ${esc(home.name)} ${s.home}, ${esc(away.name)} ${s.away}"><span>${s.home}</span><span class="tv-dash">–</span><span>${s.away}</span></div>
+        <div class="tv-score" role="img" aria-label="${scoreLabel(m, s)}"><span>${s.home}</span><span class="tv-dash">–</span><span>${s.away}</span></div>
         ${side(away, 'tv-away')}
       </div>
       <div class="tv-clockwrap">
@@ -540,42 +554,45 @@
     function screenBreak(est) {
       const m = nextMatch();
       if (!m && awaitingChampion()) {
-        return `<div class="tv-center"><span class="tv-kicker">Lig bitti</span><div class="tv-big">Şampiyon belirleniyor</div><span class="tv-sub">${TIE_TEXT}</span></div>`;
+        return `<div class="tv-center"><span class="tv-kicker">${I18n.t('Lig bitti')}</span><div class="tv-big">${I18n.t('Şampiyon belirleniyor')}</div><span class="tv-sub">${TIE_TEXT}</span></div>`;
       }
-      if (!m) return '<div class="tv-center"><span class="tv-sub">Sıradaki maç bekleniyor</span></div>';
+      if (!m) return `<div class="tv-center"><span class="tv-sub">${I18n.t('Sıradaki maç bekleniyor')}</span></div>`;
       const last = lastFinished();
       const it = est[m.id];
       const day = firstMatchDay(it);
       return `<div class="tv-center">
-      <span class="tv-kicker">Sıradaki · ${matchLabel(m)}</span>
+      <span class="tv-kicker">${I18n.t('Sıradaki')} · ${matchLabel(m)}</span>
       <div class="tv-big">${screenTeam(m, 'home')}<span class="tv-dash">–</span>${screenTeam(m, 'away', true)}</div>
-      ${it && m.home && m.away ? `<span class="tv-sub">Tahmini başlama ${day ? withTime(day, fmtTime(it.estStart)) : fmtTime(it.estStart)}</span>` : ''}
-      ${last ? `<span class="tv-last">Son maç: ${lastResult(last)}</span>` : ''}
+      ${it && m.home && m.away ? `<span class="tv-sub">${I18n.t('Tahmini başlama {time}', { time: day ? withTime(day, fmtTime(it.estStart)) : fmtTime(it.estStart) })}</span>` : ''}
+      ${last ? `<span class="tv-last">${I18n.t('Son maç: {result}', { result: lastResult(last) })}</span>` : ''}
     </div>`;
     }
+
+    const topScorerLine = (best) =>
+      `${I18n.t('Gol kralı: {names}', { names: best.map((b) => esc(b.name)).join(', ') })} · ${I18n.t('{n} gol', { n: best[0].goals })}`;
 
     function screenChampion(id) {
       const { t, players, best, line } = championData(id);
       return `<div class="tv-center" style="${teamStyle(t)}">
       <span class="champ-icon tv-trophy">${ICONS.trophy}</span>
-      <span class="tv-kicker">Şampiyon</span>
+      <span class="tv-kicker">${I18n.t('Şampiyon')}</span>
       <div class="tv-big"><span class="tv-tn">${swatch(t, { big: true })}${esc(t.name)}</span></div>
       <span class="tv-sub">${line}</span>
       <div class="champ-players tv-players">${players}</div>
-      ${best.length ? `<span class="tv-last">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</span>` : ''}
+      ${best.length ? `<span class="tv-last">${topScorerLine(best)}</span>` : ''}
     </div>`;
     }
 
     function screenIdle() {
       const r = rulesText(getState().settings);
       return `<div class="tv-center">
-      <span class="tv-kicker">Hoş geldiniz</span>
+      <span class="tv-kicker">${I18n.t('Hoş geldiniz')}</span>
       <div class="tv-big">${esc(tournamentName())}</div>
-      <span class="tv-sub">${startText(getState().settings) || 'Turnuva henüz başlamadı'}</span>
+      <span class="tv-sub">${startText(getState().settings) || I18n.t('Turnuva henüz başlamadı')}</span>
     </div>
     ${screenTeams()}
     <section class="tv-rules" aria-labelledby="tv-rules-h">
-      <h2 class="tv-rules-h" id="tv-rules-h">Nasıl oynanıyor?</h2>
+      <h2 class="tv-rules-h" id="tv-rules-h">${I18n.t('Nasıl oynanıyor?')}</h2>
       ${rulesFlow(r)}
       <p class="tv-rules-line">${r.tvLine}</p>
     </section>`;
@@ -587,13 +604,13 @@
       const tiles = list.map(
         (t) => `<li class="tv-team-card" style="${teamStyle(t)}"><span class="tv-team-name">${swatch(t)}${esc(t.name)}</span><span class="tv-team-players">${playerNames(t)}</span></li>`,
       );
-      return `<section class="tv-teams" aria-labelledby="tv-teams-h"><h2 class="tv-rules-h" id="tv-teams-h">Takımlar</h2><ul class="tv-team-list">${tiles.join('')}</ul></section>`;
+      return `<section class="tv-teams" aria-labelledby="tv-teams-h"><h2 class="tv-rules-h" id="tv-teams-h">${I18n.t('Takımlar')}</h2><ul class="tv-team-list">${tiles.join('')}</ul></section>`;
     }
 
     function screenNext(m, est) {
       const it = est[m.id];
-      return `<section class="tv-next" aria-label="Sıradaki maç">
-      <span class="tv-next-label">Sıradaki${it && m.home && m.away ? ` · ${fmtTime(it.estStart)}` : ''}</span>
+      return `<section class="tv-next" aria-label="${I18n.t('Sıradaki maç')}">
+      <span class="tv-next-label">${I18n.t('Sıradaki')}${it && m.home && m.away ? ` · ${fmtTime(it.estStart)}` : ''}</span>
       <span class="tv-next-teams">${screenTeam(m, 'home')}<span class="tv-dash">–</span>${screenTeam(m, 'away', true)}</span>
     </section>`;
     }
@@ -603,7 +620,7 @@
       return `<div class="tv">
       ${TV_LINES}
       <div class="tv-body">
-        <header class="tv-head"><div class="tv-brand"><span class="tv-mark">${ICONS.brand}</span><span class="tv-brand-name">${DEFAULT_NAME}</span></div></header>
+        <header class="tv-head"><div class="tv-brand"><span class="tv-mark">${ICONS.brand}</span><span class="tv-brand-name">${I18n.t('Halı Saha Turnuvası')}</span></div></header>
         <div class="tv-center">
           <span class="tv-kicker">${kicker}</span>
           <div class="tv-big">${title}</div>
@@ -613,9 +630,10 @@
     </div>`;
     }
 
-    const TIE_TEXT = 'Puanlar her şeyiyle eşit: penaltı ya da yazı-tura';
-    const SYNC_PILL = '<span class="iz-pill is-sync" role="status">Güncelleniyor…</span>';
-    const AWAY_TEXT = 'Organizatörün cihazı bağlı değil, skor gecikebilir';
+    const TIE_TEXT = I18n.t('Puanlar her şeyiyle eşit: penaltı ya da yazı-tura');
+    const TIE_MARK = `<span class="tie" title="${I18n.t('Eşitlik henüz çözülmedi')}">=</span>`;
+    const SYNC_PILL = `<span class="iz-pill is-sync" role="status">${I18n.t('Güncelleniyor…')}</span>`;
+    const AWAY_TEXT = I18n.t('Organizatörün cihazı bağlı değil, skor gecikebilir');
 
     // İzleyici sayfası: geniş ekranda yayın ekranı, telefonda alt alta düzen.
     function renderWatch({ wide = false, notice = 'connecting', updating = false, organizerAway = false, full = false, flags = new Set(), links = false, bell = null } = {}) {
@@ -634,17 +652,17 @@
       if (!state) {
         body = watchHero(...(WATCH_NOTICES[notice] || WATCH_NOTICES.connecting));
       } else if (!state.started) {
-        body = watchHero('Hoş geldiniz', esc(tournamentName()), startText(state.settings) || 'Turnuva henüz başlamadı') + watchTeams(links) + watchRules({ fixed: true });
+        body = watchHero(I18n.t('Hoş geldiniz'), esc(tournamentName()), startText(state.settings) || I18n.t('Turnuva henüz başlamadı')) + watchTeams(links) + watchRules({ fixed: true });
         layout = ' is-center is-pre';
       } else if (liveMatch()) {
-        pill = '<span class="tag-live">Canlı</span>';
+        pill = `<span class="tag-live">${I18n.t('Canlı')}</span>`;
         body = watchLive(liveMatch(), flags) + watchTeams(links);
         layout = '';
       } else if (T.champion(state)) {
-        pill = '<span class="iz-pill">Turnuva bitti</span>';
+        pill = `<span class="iz-pill">${I18n.t('Turnuva bitti')}</span>`;
         body = watchChampion(T.champion(state)) + watchTeams(links);
       } else {
-        if (lastFinished()) pill = '<span class="iz-pill">Maç arası</span>';
+        if (lastFinished()) pill = `<span class="iz-pill">${I18n.t('Maç arası')}</span>`;
         body = watchBreak(estimates(state), links) + watchTeams(links);
         layout = ' is-break';
       }
@@ -659,8 +677,8 @@
     }
 
     function bellButton(on) {
-      const label = `Gol ve sonuç bildirimleri ${on ? 'açık' : 'kapalı'}`;
-      return `<button class="iz-bell${on ? ' is-on' : ''}" data-action="push-toggle" aria-pressed="${on}" aria-label="Gol ve sonuç bildirimleri" title="${label}">${on ? ICONS.bell : ICONS.bellOff}</button>`;
+      const label = on ? I18n.t('Gol ve sonuç bildirimleri açık') : I18n.t('Gol ve sonuç bildirimleri kapalı');
+      return `<button class="iz-bell${on ? ' is-on' : ''}" data-action="push-toggle" aria-pressed="${on}" aria-label="${I18n.t('Gol ve sonuç bildirimleri')}" title="${label}">${on ? ICONS.bell : ICONS.bellOff}</button>`;
     }
 
     function watchTeams(links) {
@@ -672,7 +690,7 @@
           ? `<button class="iz-tl-row" data-action="team" data-team="${t.id}" style="${teamStyle(t)}">${inner}${ICONS.forward}</button>`
           : `<div class="iz-tl-row" style="${teamStyle(t)}">${inner}</div>`;
       });
-      return `<section class="iz-teams" aria-labelledby="iz-teams-h"><h2 class="iz-teams-h" id="iz-teams-h">${ICONS.users}Takımlar</h2>${rows.join('')}</section>`;
+      return `<section class="iz-teams" aria-labelledby="iz-teams-h"><h2 class="iz-teams-h" id="iz-teams-h">${ICONS.users}${I18n.t('Takımlar')}</h2>${rows.join('')}</section>`;
     }
 
     function watchHero(kicker, title, sub) {
@@ -685,12 +703,12 @@
 
     function watchKicker(m) {
       if (m.stage !== 'league') return matchTitle(m);
-      return `${matchTitle(m)} · Lig${getState().settings.leagueRounds > 1 ? ` ${m.round}. devre` : ''}`;
+      return `${matchTitle(m)} · ${getState().settings.leagueRounds > 1 ? I18n.t('Lig {n}. devre', { n: m.round }) : I18n.t('Lig')}`;
     }
 
     function watchTeam(m, side, flags) {
       const t = team(m[side]);
-      const flag = m.goals.some((g) => g.team === t.id && flags.has(g.id)) ? `<span class="iz-goal-flag">${ICONS.ball}Gol</span>` : '';
+      const flag = m.goals.some((g) => g.team === t.id && flags.has(g.id)) ? `<span class="iz-goal-flag">${ICONS.ball}${I18n.t('Gol')}</span>` : '';
       return `<button class="iz-team" style="${teamStyle(t)}" data-action="team" data-team="${t.id}">
         <span class="iz-team-l">
           <span class="iz-tname">${swatch(t)}<span class="tn-name">${esc(t.name)}</span></span>
@@ -705,13 +723,13 @@
       const s = T.score(m);
       const next = nextMatch();
       return `<span class="iz-kicker">${watchKicker(m)}</span>
-      <section class="iz-board" aria-label="Skor: ${esc(team(m.home).name)} ${s.home}, ${esc(team(m.away).name)} ${s.away}">
+      <section class="iz-board" aria-label="${scoreLabel(m, s)}">
         ${watchTeam(m, 'home', flags)}${watchTeam(m, 'away', flags)}
       </section>
-      <section class="iz-clock" aria-label="Kalan süre">
-        <div class="iz-ring" data-clock data-timer-progress role="progressbar" aria-label="Geçen süre" aria-valuemin="0" aria-valuemax="100">
+      <section class="iz-clock" aria-label="${I18n.t('Kalan süre')}">
+        <div class="iz-ring" data-clock data-timer-progress role="progressbar" aria-label="${I18n.t('Geçen süre')}" aria-valuemin="0" aria-valuemax="100">
           <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="iz-ring-track" cx="100" cy="100" r="88"/><circle class="iz-ring-fill" data-timer-ring cx="100" cy="100" r="88" transform="rotate(-90 100 100)"/></svg>
-          <span class="iz-ring-c"><span class="iz-time" data-timer></span><span class="iz-ring-cap" data-timer-state data-running="kalan · ${T.matchMinutes(state, m)} dk"></span></span>
+          <span class="iz-ring-c"><span class="iz-time" data-timer></span><span class="iz-ring-cap" data-timer-state data-running="${I18n.t('kalan · {n} dk', { n: T.matchMinutes(state, m) })}"></span></span>
         </div>
       </section>
       ${next ? watchNext(next, estimates(state)) : ''}`;
@@ -719,22 +737,22 @@
 
     function watchNext(m, est) {
       const it = est[m.id];
-      return `<section class="iz-next" aria-label="Sıradaki maç">
-        <span class="iz-next-label">Sıradaki${it ? `<br>${fmtTime(it.estStart)}` : ''}</span>
+      return `<section class="iz-next" aria-label="${I18n.t('Sıradaki maç')}">
+        <span class="iz-next-label">${I18n.t('Sıradaki')}${it ? `<br>${fmtTime(it.estStart)}` : ''}</span>
         <span class="iz-next-teams">${screenTeam(m, 'home')}<span class="tv-dash" aria-hidden="true">–</span>${screenTeam(m, 'away', true)}</span>
       </section>`;
     }
 
     function watchBreak(est, links = false) {
       const m = nextMatch();
-      if (!m && awaitingChampion()) return watchHero('Lig bitti', 'Şampiyon belirleniyor', TIE_TEXT);
-      if (!m) return watchHero('', 'Sıradaki maç bekleniyor', '');
+      if (!m && awaitingChampion()) return watchHero(I18n.t('Lig bitti'), I18n.t('Şampiyon belirleniyor'), TIE_TEXT);
+      if (!m) return watchHero('', I18n.t('Sıradaki maç bekleniyor'), '');
       const last = lastFinished();
       const it = est[m.id];
       const day = firstMatchDay(it);
-      return `<span class="iz-kicker">Sıradaki · ${matchTitle(m)}</span>
+      return `<span class="iz-kicker">${I18n.t('Sıradaki')} · ${matchTitle(m)}</span>
       <div class="iz-vs">${screenTeam(m, 'home')}<span class="iz-vs-dash" aria-hidden="true">–</span>${screenTeam(m, 'away')}</div>
-      ${it ? `<div class="iz-eta"><span>Tahmini başlama</span>${day ? `<span class="iz-eta-day">${day}</span>` : ''}<strong>${fmtTime(it.estStart)}</strong><span>${T.matchMinutes(getState(), m)} dakikalık maç</span></div>` : ''}
+      ${it ? `<div class="iz-eta"><span>${I18n.t('Tahmini başlama')}</span>${day ? `<span class="iz-eta-day">${day}</span>` : ''}<strong>${fmtTime(it.estStart)}</strong><span>${I18n.t('{n} dakikalık maç', { n: T.matchMinutes(getState(), m) })}</span></div>` : ''}
       ${last ? watchLast(last, links) : ''}`;
     }
 
@@ -747,23 +765,23 @@
         return `<span class="tv-tn${cls}" style="${teamStyle(t)}">${swatch(t)}${esc(t?.name)}</span>`;
       };
       const goals = goalList(m);
-      const inner = `<span class="iz-last-head"><span>Son maç · ${matchTitle(m)}</span>${links ? `<span class="iz-last-go">Maç özeti${ICONS.forward}</span>` : ''}</span>
+      const inner = `<span class="iz-last-head"><span>${I18n.t('Son maç')} · ${matchTitle(m)}</span>${links ? `<span class="iz-last-go">${I18n.t('Maç özeti')}${ICONS.forward}</span>` : ''}</span>
         <span class="iz-last-row">${side('home')}<span class="iz-last-score">${s.home} – ${s.away}</span>${side('away')}</span>
-        ${m.pens ? `<span class="iz-last-note">Penaltılar ${m.pens.home}–${m.pens.away}</span>` : ''}
+        ${m.pens ? `<span class="iz-last-note">${I18n.t('Penaltılar {home}–{away}', m.pens)}</span>` : ''}
         ${goals ? `<span class="iz-last-note">${goals}</span>` : ''}`;
-      if (links) return `<button class="iz-last" data-action="match" data-match="${m.id}" aria-label="Son maç özeti: ${lastResult(m)}">${inner}</button>`;
-      return `<section class="iz-last" aria-label="Son maç">${inner}</section>`;
+      if (links) return `<button class="iz-last" data-action="match" data-match="${m.id}" aria-label="${I18n.t('Son maç özeti: {result}', { result: lastResult(m) })}">${inner}</button>`;
+      return `<section class="iz-last" aria-label="${I18n.t('Son maç')}">${inner}</section>`;
     }
 
     function watchChampion(id) {
       const { t, players, best, line } = championData(id);
       return `<div class="iz-hero" style="${teamStyle(t)}">
         <span class="champ-icon">${ICONS.trophy}</span>
-        <span class="iz-hero-kicker">Şampiyon</span>
+        <span class="iz-hero-kicker">${I18n.t('Şampiyon')}</span>
         <h1 class="iz-hero-title iz-champ">${swatch(t, { big: true })}${esc(t.name)}</h1>
         <p class="iz-hero-sub">${line}</p>
         <div class="champ-players">${players}</div>
-        ${best.length ? `<p class="iz-hero-note">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</p>` : ''}
+        ${best.length ? `<p class="iz-hero-note">${topScorerLine(best)}</p>` : ''}
       </div>`;
     }
 
@@ -782,8 +800,8 @@
         <section class="iz-sheet is-match">
           <span class="iz-grip" aria-hidden="true"></span>
           <div class="iz-sheet-head">
-            <button class="iz-sheet-back" data-action="sheet-back">${ICONS.back}Fikstür</button>
-            <button class="iz-close" data-action="sheet-close" aria-label="Kapat">${ICONS.x}</button>
+            <button class="iz-sheet-back" data-action="sheet-back">${ICONS.back}${I18n.t('Fikstür')}</button>
+            <button class="iz-close" data-action="sheet-close" aria-label="${I18n.t('Kapat')}">${ICONS.x}</button>
           </div>
           ${summary}
         </section>`;
@@ -792,8 +810,8 @@
       <section class="iz-sheet">
         <span class="iz-grip" aria-hidden="true"></span>
         <div class="iz-sheet-head">
-          <h2 id="iz-sheet-title">Fikstür ve puan</h2>
-          <button class="iz-close" data-action="sheet-close" aria-label="Kapat" autofocus>${ICONS.x}</button>
+          <h2 id="iz-sheet-title">${I18n.t('Fikstür ve puan')}</h2>
+          <button class="iz-close" data-action="sheet-close" aria-label="${I18n.t('Kapat')}" autofocus>${ICONS.x}</button>
         </div>
         <div class="iz-sheet-top"><div class="iz-sheet-side">${renderStandings()}${sheetTeams()}</div><div class="iz-sheet-side">${watchScorers(scorersOpen)}${watchRules({ open: rulesOpen, light: true })}</div></div>
         ${watchFixtures()}
@@ -804,18 +822,18 @@
       const list = rosterTeams();
       if (!list.length) return '';
       const rows = list.map((t) => `<div class="iz-roster-name">${teamName(t.id)}</div><span class="iz-roster-players">${playerNames(t)}</span>`);
-      return `<section class="card side-card" aria-labelledby="h-roster"><h2 class="card-title" id="h-roster">Takımlar</h2><div class="iz-roster">${rows.join('')}</div></section>`;
+      return `<section class="card side-card" aria-labelledby="h-roster"><h2 class="card-title" id="h-roster">${I18n.t('Takımlar')}</h2><div class="iz-roster">${rows.join('')}</div></section>`;
     }
 
     function rulesFlow(r) {
       const steps = r.steps.map(
         (x, i) => `${i ? `<li class="iz-flow-arrow" aria-hidden="true">${ICONS.forward}</li>` : ''}<li class="iz-step">
           <span class="iz-step-name">${x.name}${i === r.steps.length - 1 ? ICONS.trophy : ''}</span>
-          <span class="iz-step-min">${x.min}<small>dk</small></span>
+          <span class="iz-step-min">${x.min}<small>${I18n.t('dk')}</small></span>
           <span class="iz-step-who">${x.who}</span>
         </li>`,
       );
-      return `<ol class="iz-flow" aria-label="Turnuva akışı">${steps.join('')}</ol>`;
+      return `<ol class="iz-flow" aria-label="${I18n.t('Turnuva akışı')}">${steps.join('')}</ol>`;
     }
 
     function watchRules({ open = false, light = false, fixed = false } = {}) {
@@ -825,12 +843,12 @@
         ${rulesFlow(r)}
         <p class="iz-flow-meta">${r.meta}</p>
         <dl class="iz-rules-dl">
-          <div><dt>Puan</dt><dd class="iz-rules-pts"><span><b>3</b>galibiyet</span><span><b>1</b>beraberlik</span><span><b>0</b>mağlubiyet</span></dd></div>
-          <div><dt>Beraberlik</dt><dd>${r.draw}</dd></div>
-          <div><dt>Puan eşitse</dt><dd>${['Averaj', 'atılan gol', 'aralarındaki maç', 'penaltı ya da yazı-tura'].join(sep)}</dd></div>
+          <div><dt>${I18n.t('Puan')}</dt><dd class="iz-rules-pts"><span><b>3</b>${I18n.t('galibiyet')}</span><span><b>1</b>${I18n.t('beraberlik')}</span><span><b>0</b>${I18n.t('mağlubiyet')}</span></dd></div>
+          <div><dt>${I18n.t('Beraberlik')}</dt><dd>${r.draw}</dd></div>
+          <div><dt>${I18n.t('Puan eşitse')}</dt><dd>${[I18n.t('Averaj'), I18n.t('atılan gol'), I18n.t('aralarındaki maç'), I18n.t('penaltı ya da yazı-tura')].join(sep)}</dd></div>
         </dl>
       </div></div></div>`;
-      const label = `<span class="iz-rules-label">${light ? '' : ICONS.help}Nasıl oynanıyor?</span>`;
+      const label = `<span class="iz-rules-label">${light ? '' : ICONS.help}${I18n.t('Nasıl oynanıyor?')}</span>`;
       if (fixed) {
         return `<section class="iz-rules is-open" aria-labelledby="iz-rules-h"><h2 class="iz-rules-head" id="iz-rules-h">${label}</h2>${content}</section>`;
       }
@@ -844,9 +862,9 @@
 
     function watchScorers(open) {
       const { list } = T.topScorers(getState());
-      const label = '<span class="iz-kings-label">Gol kralı</span>';
+      const label = `<span class="iz-kings-label">${I18n.t('Gol kralı')}</span>`;
       if (!list.length) {
-        return `<section class="iz-kings" aria-label="Gol krallığı"><div class="iz-kings-btn">${label}<span class="iz-kings-none">Henüz gol yok</span></div></section>`;
+        return `<section class="iz-kings" aria-label="${I18n.t('Gol krallığı')}"><div class="iz-kings-btn">${label}<span class="iz-kings-none">${I18n.t('Henüz gol yok')}</span></div></section>`;
       }
       const top = list[0].goals;
       const leaders = list.filter((s) => s.goals === top);
@@ -855,9 +873,9 @@
           .slice(0, 2)
           .map((s) => `<span class="iz-kings-name">${scorerSwatch(s)}<span class="tn-name">${esc(s.name)}</span></span>`)
           .join('<span class="iz-kings-sep" aria-hidden="true">·</span>') + (leaders.length > 2 ? `<span class="iz-kings-more">+${leaders.length - 2}</span>` : '');
-      return `<section class="iz-kings" aria-label="Gol krallığı">
+      return `<section class="iz-kings" aria-label="${I18n.t('Gol krallığı')}">
         <button class="iz-kings-btn" data-action="scorers-toggle" aria-expanded="${open}" aria-controls="iz-kings-list">
-          ${label}<span class="iz-kings-lead">${lead}<strong>${top} gol</strong>${ICONS.chevron}</span>
+          ${label}<span class="iz-kings-lead">${lead}<strong>${I18n.t('{n} gol', { n: top })}</strong>${ICONS.chevron}</span>
         </button>
         <ol class="iz-kings-list" id="iz-kings-list"${open ? '' : ' hidden'}>${scorerRows(list)}</ol>
       </section>`;
@@ -898,7 +916,7 @@
 
     // Düğme ::after ile bütün satırı kaplar; satırdaki takım düğmeleri onun üstünde kalır.
     function summaryButton(m, cls, inner) {
-      return `<button class="${cls} row-hit" data-action="match" data-match="${m.id}" aria-label="${matchTitle(m)} özeti: ${lastResult(m)}">${inner}</button>`;
+      return `<button class="${cls} row-hit" data-action="match" data-match="${m.id}" aria-label="${I18n.t('{title} özeti: {result}', { title: matchTitle(m), result: lastResult(m) })}">${inner}</button>`;
     }
 
     function watchFixtureRow(m, it, links = false) {
@@ -913,14 +931,14 @@
       let time = it ? fmtTime(it.estStart) : '';
       let score = '–';
       if (m.status === 'live') {
-        time = '<span class="tag-live">Canlı</span>';
+        time = `<span class="tag-live">${I18n.t('Canlı')}</span>`;
         score = `${s.home}–${s.away}`;
       } else if (m.status === 'done') {
         time = fmtTime(m.startedAt);
-        score = `${s.home}–${s.away}${m.pens ? `<small>pen. ${m.pens.home}–${m.pens.away}</small>` : ''}`;
+        score = `${s.home}–${s.away}${m.pens ? `<small>${I18n.t('pen.')} ${m.pens.home}–${m.pens.away}</small>` : ''}`;
       }
       let scoreEl = `<span class="iz-fx-score">${score}</span>`;
-      if (links && m.status === 'live') scoreEl = `<button class="iz-fx-score" data-action="tab" data-tab="mac" aria-label="Canlı maça git">${score}</button>`;
+      if (links && m.status === 'live') scoreEl = `<button class="iz-fx-score" data-action="tab" data-tab="mac" aria-label="${I18n.t('Canlı maça git')}">${score}</button>`;
       else if (m.status === 'done') scoreEl = summaryButton(m, 'iz-fx-score', score);
       return `<div class="iz-fx-row is-${m.status}">
         <span class="iz-fx-time">${time}</span>${side('home')}${scoreEl}${side('away')}
@@ -928,16 +946,16 @@
     }
 
     const TABS = [
-      ['mac', 'Maç', ICONS.tabMac, ICONS.tabMacOn],
-      ['fikstur', 'Fikstür', ICONS.tabFikstur, ICONS.tabFiksturOn],
-      ['puan', 'Puan', ICONS.tabPuan, ICONS.tabPuanOn],
+      ['mac', I18n.t('Maç'), ICONS.tabMac, ICONS.tabMacOn],
+      ['fikstur', I18n.t('Fikstür'), ICONS.tabFikstur, ICONS.tabFiksturOn],
+      ['puan', I18n.tc('tab', 'Puan'), ICONS.tabPuan, ICONS.tabPuanOn],
     ];
 
     function renderTabBar(active) {
       return TABS.map(
         ([key, label, off, on]) => `<button class="iz-tab" role="tab" data-action="tab" data-tab="${key}" aria-selected="${key === active}">
           <span class="iz-tab-pill">${off}${on}${key === 'mac' ? '<span class="iz-tab-dot" aria-hidden="true"></span>' : ''}</span>
-          <span class="iz-tab-label">${label}</span>${key === 'mac' ? '<span class="sr iz-tab-live">, canlı maç var</span>' : ''}
+          <span class="iz-tab-label">${label}</span>${key === 'mac' ? `<span class="sr iz-tab-live">, ${I18n.t('canlı maç var')}</span>` : ''}
         </button>`,
       ).join('');
     }
@@ -951,8 +969,9 @@
     function renderFixturePage({ rulesOpen = false } = {}) {
       const state = getState();
       const n = T.activeMatches(state).length;
-      const sub = T.champion(state) ? `Turnuva bitti · ${n} maç` : `${n} maç · tahmini bitiş ${fmtTime(T.schedule(state).estEnd)}`;
-      return `${pageHead('Fikstür', sub)}<div class="iz-stack">${watchRules({ open: rulesOpen })}${watchFixtures({ links: true })}</div>`;
+      const matches = I18n.t('{n} maç', { n });
+      const sub = T.champion(state) ? `${I18n.t('Turnuva bitti')} · ${matches}` : `${matches} · ${I18n.t('tahmini bitiş {time}', { time: fmtTime(T.schedule(state).estEnd) })}`;
+      return `${pageHead(I18n.t('Fikstür'), sub)}<div class="iz-stack">${watchRules({ open: rulesOpen })}${watchFixtures({ links: true })}</div>`;
     }
 
     function renderStandingsPage() {
@@ -962,29 +981,29 @@
       const done = T.leagueDone(state);
       const tied = new Set(done ? unresolved.flat() : []);
       const current = state.matches.find((m) => m.stage === 'league' && m.status !== 'done');
-      const sub = done ? 'Lig bitti' : state.settings.leagueRounds > 1 ? `Lig · ${current.round}. devre` : 'Lig sürüyor';
+      const sub = done ? I18n.t('Lig bitti') : state.settings.leagueRounds > 1 ? I18n.t('Lig · {n}. devre', { n: current.round }) : I18n.t('Lig sürüyor');
       const body = rows
         .map((r, i) => {
           const t = team(r.team);
-          return `<button class="iz-st-row" data-action="team" data-team="${t.id}" aria-label="${esc(t.name)}, ${i + 1}. sıra, ${r.pts} puan">
-            <span><span class="rank rank-${zones[i]}">${i + 1}</span>${tied.has(r.team) ? '<span class="tie" title="Eşitlik henüz çözülmedi">=</span>' : ''}</span>
+          return `<button class="iz-st-row" data-action="team" data-team="${t.id}" aria-label="${I18n.t('{name}, {rank}. sıra, {pts} puan', { name: esc(t.name), rank: i + 1, pts: r.pts })}">
+            <span><span class="rank rank-${zones[i]}">${i + 1}</span>${tied.has(r.team) ? TIE_MARK : ''}</span>
             <span class="iz-st-tn" style="${teamStyle(t)}">${swatch(t)}<span class="tn-name">${esc(t.name)}</span></span>
             <span>${r.played}</span><span>${signed(r.gd)}</span><b>${r.pts}</b>${ICONS.forward}
           </button>`;
         })
         .join('');
       const liveLeague = liveMatch()?.stage === 'league';
-      const note = `${zoneNote}${liveLeague ? ' · canlı maç anlık skorla dahil' : ''}`;
+      const note = `${zoneNote}${liveLeague ? ` · ${I18n.t('canlı maç anlık skorla dahil')}` : ''}`;
       const { list } = T.topScorers(state);
-      const kings = list.length ? `<ol class="iz-kings-list">${scorerRows(list, { withTeam: true })}</ol>` : '<p class="iz-card-note">Henüz gol yok</p>';
-      return `${pageHead('Puan', sub)}<div class="iz-stack">
-        <section class="iz-card" aria-label="Puan durumu">
-          <h2 class="iz-card-h">Puan durumu</h2>
-          <div class="iz-st-head" aria-hidden="true"><span></span><span></span><span>O</span><span>Av</span><span>P</span><span></span></div>
+      const kings = list.length ? `<ol class="iz-kings-list">${scorerRows(list, { withTeam: true })}</ol>` : `<p class="iz-card-note">${I18n.t('Henüz gol yok')}</p>`;
+      return `${pageHead(I18n.tc('tab', 'Puan'), sub)}<div class="iz-stack">
+        <section class="iz-card" aria-label="${I18n.t('Puan durumu')}">
+          <h2 class="iz-card-h">${I18n.t('Puan durumu')}</h2>
+          <div class="iz-st-head" aria-hidden="true"><span></span><span></span><span>${I18n.t('O')}</span><span>${I18n.t('Av')}</span><span>${I18n.t('P')}</span><span></span></div>
           ${body}
           <p class="iz-card-note">${note}</p>
         </section>
-        <section class="iz-card" aria-label="Gol krallığı"><h2 class="iz-card-h">Gol krallığı <small>gol</small></h2>${kings}</section>
+        <section class="iz-card" aria-label="${I18n.t('Gol krallığı')}"><h2 class="iz-card-h">${I18n.t('Gol krallığı')} <small>${I18n.t('gol')}</small></h2>${kings}</section>
       </div>`;
     }
 
@@ -993,15 +1012,15 @@
       const champ = T.champion(state);
       const fin = findStage('final');
       const po = T.hasPlayoff(state.settings) ? findStage('playoff') : null;
-      if (champ === id) return ['Şampiyon', championData(id).line];
+      if (champ === id) return [I18n.t('Şampiyon'), championData(id).line];
       if (champ && !T.hasFinal(state.settings)) {
         const { rows } = T.computeStandings(state, { includeLive: false });
         const pos = rows.findIndex((r) => r.team === id);
-        return [`Lig ${RANKS[pos]}`, `${rows[pos].pts} puan`];
+        return [RANKS[pos], I18n.t('{n} puan', { n: rows[pos].pts })];
       }
-      if (champ && (fin.home === id || fin.away === id)) return ['Finalist', `Final: ${lastResult(fin)}`];
-      if (po?.status === 'done' && (po.home === id || po.away === id)) return ["Playoff'ta elendi", `Playoff: ${lastResult(po)}`];
-      return [champ ? 'Turnuva bitti' : 'Maçları bitti', ''];
+      if (champ && (fin.home === id || fin.away === id)) return [I18n.t('Finalist'), I18n.t('Final: {result}', { result: lastResult(fin) })];
+      if (po?.status === 'done' && (po.home === id || po.away === id)) return [I18n.t('Playoff\'ta elendi'), I18n.t('Playoff: {result}', { result: lastResult(po) })];
+      return [champ ? I18n.t('Turnuva bitti') : I18n.t('Maçları bitti'), ''];
     }
 
     function renderTeamPage(id) {
@@ -1022,14 +1041,14 @@
         .sort((a, b) => b.goals - a.goals || a.i - b.i)
         .map(
           ({ p, goals }) =>
-            `<li><span class="iz-pl-name">${esc(p.name)}</span>${goals && goals === top ? '<span class="iz-pl-tag">Gol kralı</span>' : '<span></span>'}<b${goals ? '' : ' class="is-zero"'}>${goals}</b></li>`,
+            `<li><span class="iz-pl-name">${esc(p.name)}</span>${goals && goals === top ? `<span class="iz-pl-tag">${I18n.t('Gol kralı')}</span>` : '<span></span>'}<b${goals ? '' : ' class="is-zero"'}>${goals}</b></li>`,
         );
       const played = state.matches.filter((m) => m.status !== 'pending');
       const count = (test) => played.reduce((n, m) => n + m.goals.filter((g) => g.team === id && test(g)).length, 0);
       const unnamed = count((g) => !g.playerId);
       const gifted = count((g) => g.playerId && g.ownGoal);
-      if (gifted) players.push(`<li class="is-unnamed"><span class="iz-pl-name">Rakip kendi kalesine</span><span></span><b>${gifted}</b></li>`);
-      if (unnamed) players.push(`<li class="is-unnamed"><span class="iz-pl-name">Golcüsü bilinmeyen</span><span></span><b>${unnamed}</b></li>`);
+      if (gifted) players.push(`<li class="is-unnamed"><span class="iz-pl-name">${I18n.t('Rakip kendi kalesine')}</span><span></span><b>${gifted}</b></li>`);
+      if (unnamed) players.push(`<li class="is-unnamed"><span class="iz-pl-name">${I18n.t('Golcüsü bilinmeyen')}</span><span></span><b>${unnamed}</b></li>`);
 
       const mine = T.activeMatches(state).filter((m) => m.home === id || m.away === id);
       const games = mine
@@ -1043,13 +1062,13 @@
           if (m.status === 'done') {
             res =
               w === id
-                ? '<span class="iz-res is-g" title="Galibiyet">G</span>'
+                ? `<span class="iz-res is-g" title="${I18n.t('Galibiyet')}">${I18n.t('G')}</span>`
                 : w
-                  ? '<span class="iz-res is-m" title="Mağlubiyet">M</span>'
-                  : '<span class="iz-res is-b" title="Beraberlik">B</span>';
+                  ? `<span class="iz-res is-m" title="${I18n.t('Mağlubiyet')}">${I18n.t('M')}</span>`
+                  : `<span class="iz-res is-b" title="${I18n.t('Beraberlik')}">${I18n.t('B')}</span>`;
           }
-          const time = m.status === 'live' ? '<span class="tag-live">Canlı</span>' : m.status === 'done' ? fmtTime(m.startedAt) : fmtTime(est[m.id]?.estStart);
-          const score = m.status === 'pending' ? '–' : `${us}–${them}${m.pens ? '<small>pen.</small>' : ''}`;
+          const time = m.status === 'live' ? `<span class="tag-live">${I18n.t('Canlı')}</span>` : m.status === 'done' ? fmtTime(m.startedAt) : fmtTime(est[m.id]?.estStart);
+          const score = m.status === 'pending' ? '–' : `${us}–${them}${m.pens ? `<small>${I18n.t('pen.')}</small>` : ''}`;
           const scoreEl = m.status === 'done' ? summaryButton(m, 'iz-tm-score', score) : `<span class="iz-tm-score">${score}</span>`;
           return `<li class="is-${m.status}"><span class="iz-tm-time">${time}<small>${matchTitle(m)}</small></span><span class="iz-tm-opp" style="${teamStyle(opp)}">${swatch(opp)}<span class="tn-name">${esc(opp.name)}</span></span>${scoreEl}${res}</li>`;
         })
@@ -1057,8 +1076,8 @@
       let elim = '';
       if (!T.leagueDone(state)) {
         elim = T.hasFinal(state.settings)
-          ? `<li class="iz-tm-note">Eleme maçları lig bitince belli olur: ${T.hasPlayoff(state.settings) ? "1. finale, 2. ve 3. playoff'a" : '1. ve 2. finale'}.</li>`
-          : '<li class="iz-tm-note">Final yok: ligi birinci bitiren şampiyon olur.</li>';
+          ? `<li class="iz-tm-note">${T.hasPlayoff(state.settings) ? I18n.t('Eleme maçları lig bitince belli olur: 1. finale, 2. ve 3. playoff\'a.') : I18n.t('Eleme maçları lig bitince belli olur: 1. ve 2. finale.')}</li>`
+          : `<li class="iz-tm-note">${I18n.t('Final yok: ligi birinci bitiren şampiyon olur.')}</li>`;
       }
 
       const live = liveMatch();
@@ -1066,34 +1085,34 @@
       let now;
       if (live && (live.home === id || live.away === id)) {
         const s = T.score(live);
-        now = `<section class="iz-nx" aria-label="Şu an sahada">
-          <span class="iz-nx-label"><span class="tag-live">Canlı</span>Şu an sahada · ${matchTitle(live)}</span>
+        now = `<section class="iz-nx" aria-label="${I18n.t('Şu an sahada')}">
+          <span class="iz-nx-label"><span class="tag-live">${I18n.t('Canlı')}</span>${I18n.t('Şu an sahada')} · ${matchTitle(live)}</span>
           <span class="iz-nx-teams">${screenTeam(live, 'home')}<span>${s.home}–${s.away}</span>${screenTeam(live, 'away', true)}</span>
-          <span class="iz-nx-sub"><span data-timer></span> kalan</span>
-          <button class="iz-nx-go" data-action="tab" data-tab="mac">Maça git</button>
+          <span class="iz-nx-sub"><span data-timer></span> ${I18n.t('kalan')}</span>
+          <button class="iz-nx-go" data-action="tab" data-tab="mac">${I18n.t('Maça git')}</button>
         </section>`;
       } else if (next) {
         const it = est[next.id];
-        now = `<section class="iz-nx" aria-label="Sıradaki maç">
-          <span class="iz-nx-label">Sıradaki maç · tahmini başlama</span>
+        now = `<section class="iz-nx" aria-label="${I18n.t('Sıradaki maç')}">
+          <span class="iz-nx-label">${I18n.t('Sıradaki maç · tahmini başlama')}</span>
           <strong class="iz-nx-big">${fmtTime(it?.estStart)}</strong>
           <span class="iz-nx-teams">${screenTeam(next, 'home')}<span class="tv-dash">–</span>${screenTeam(next, 'away', true)}</span>
-          <span class="iz-nx-sub">${watchKicker(next)} · ${T.matchMinutes(state, next)} dk</span>
+          <span class="iz-nx-sub">${watchKicker(next)} · ${I18n.t('{n} dk', { n: T.matchMinutes(state, next) })}</span>
         </section>`;
       } else {
         const [title, sub] = teamOutcome(id);
-        now = `<section class="iz-nx" aria-label="Turnuva"><span class="iz-nx-label">${T.champion(state) ? 'Turnuva bitti' : 'Bu takımın maçları'}</span><strong class="iz-nx-big">${title}</strong>${sub ? `<span class="iz-nx-sub">${sub}</span>` : ''}</section>`;
+        now = `<section class="iz-nx" aria-label="${I18n.t('Turnuva')}"><span class="iz-nx-label">${T.champion(state) ? I18n.t('Turnuva bitti') : I18n.t('Bu takımın maçları')}</span><strong class="iz-nx-big">${title}</strong>${sub ? `<span class="iz-nx-sub">${sub}</span>` : ''}</section>`;
       }
 
       return `<div class="iz-th" style="${teamStyle(t)}">${swatch(t, { big: true })}<h1>${esc(t.name)}</h1></div>
         <div class="iz-th-stats">
-          <div><b>${pos + 1}.</b><span>Lig sırası</span></div><div><b>${r.pts}</b><span>Puan</span></div>
-          <div><b>${r.played}</b><span>Maç</span></div><div><b>${signed(r.gd)}</b><span>Averaj</span></div>
+          <div><b>${I18n.t('{n}.', { n: pos + 1 })}</b><span>${I18n.t('Lig sırası')}</span></div><div><b>${r.pts}</b><span>${I18n.t('Puan')}</span></div>
+          <div><b>${r.played}</b><span>${I18n.tc('count', 'Maç')}</span></div><div><b>${signed(r.gd)}</b><span>${I18n.t('Averaj')}</span></div>
         </div>
         <div class="iz-stack">${now}
-          <section class="iz-card" aria-label="Oyuncular"><h2 class="iz-card-h">Oyuncular <small>gol</small></h2><ol class="iz-pl">${players.join('')}</ol></section>
-          <section class="iz-card" aria-label="Maçlar"><h2 class="iz-card-h">Maçlar</h2><ol class="iz-tm">${games}${elim}</ol>
-            <p class="iz-card-note">G galibiyet · B beraberlik · M mağlubiyet · skor takımın gözünden</p></section>
+          <section class="iz-card" aria-label="${I18n.t('Oyuncular')}"><h2 class="iz-card-h">${I18n.t('Oyuncular')} <small>${I18n.t('gol')}</small></h2><ol class="iz-pl">${players.join('')}</ol></section>
+          <section class="iz-card" aria-label="${I18n.t('Maçlar')}"><h2 class="iz-card-h">${I18n.t('Maçlar')}</h2><ol class="iz-tm">${games}${elim}</ol>
+            <p class="iz-card-note">${I18n.t('G galibiyet · B beraberlik · M mağlubiyet · skor takımın gözünden')}</p></section>
         </div>`;
     }
 
@@ -1111,7 +1130,7 @@
           clock.classList.toggle('is-last-minute', !over && rem <= MINUTE);
           clock.classList.toggle('is-paused', !running);
           const label = clock.querySelector('[data-timer-state]');
-          if (label) label.textContent = over ? 'Süre doldu' : running ? label.dataset.running || '' : 'Duraklatıldı';
+          if (label) label.textContent = over ? I18n.t('Süre doldu') : running ? label.dataset.running || '' : I18n.t('Duraklatıldı');
         }
         for (const el of document.querySelectorAll('[data-timer]')) el.textContent = fmtClock(rem);
         for (const el of document.querySelectorAll('[data-timer-bar]')) el.style.width = `${done * 100}%`;
@@ -1153,5 +1172,5 @@
     };
   }
 
-  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, swatch, fmtClock, fmtTime, goalMinute, startText, rulesText, toggleRules, keepAwake, sheetView, create };
+  return { COLORS, ICONS, WIDE_QUERY, esc, clamp, teamStyle, swatch, fmtClock, fmtTime, goalMinute, displayName, startText, rulesText, toggleRules, keepAwake, sheetView, create };
 });
