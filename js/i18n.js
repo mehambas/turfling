@@ -645,10 +645,6 @@
       const next = current === 'tr' ? 'en' : 'tr';
       el.textContent = next === 'en' ? 'English' : 'Türkçe';
       el.lang = next;
-      el.onclick = () => {
-        set(next);
-        location.reload();
-      };
     }
   }
 
@@ -661,6 +657,12 @@
   if (typeof document !== 'undefined') {
     document.documentElement.lang = current;
     apply(document);
+    // Delegated, because the viewer copies the footer into pages it re-renders.
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest || !e.target.closest('[data-lang-toggle]')) return;
+      set(current === 'tr' ? 'en' : 'tr');
+      location.reload();
+    });
   }
 
   return {

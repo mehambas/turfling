@@ -185,11 +185,14 @@
     }
   }
 
+  // The page footer would sit behind the full-screen tabs, so the scrolling pages carry a copy at their end.
+  const legal = document.querySelector('.legal-footer')?.outerHTML ?? '';
+
   function renderTabs(opts) {
     if (!nav) buildShell();
     fill(nav.roots.mac.querySelector('.iz-page-body'), V.renderWatch({ ...opts, links: true }));
-    fill(nav.roots.fikstur.querySelector('.iz-scroll'), V.renderFixturePage({ rulesOpen: ui.rulesOpen }));
-    fill(nav.roots.puan.querySelector('.iz-scroll'), V.renderStandingsPage());
+    fill(nav.roots.fikstur.querySelector('.iz-scroll'), V.renderFixturePage({ rulesOpen: ui.rulesOpen }) + legal);
+    fill(nav.roots.puan.querySelector('.iz-scroll'), V.renderStandingsPage() + legal);
     for (const [tab, stack] of Object.entries(stacks)) {
       const bad = stack.findIndex((e) => !pageExists(e));
       if (bad >= 0) while (stack.length > bad) closeTop(tab, { instant: true });

@@ -755,6 +755,14 @@ body.is-tabs {
   overflow: hidden;
 }
 
+body.is-tabs > .legal-footer {
+  display: none;
+}
+
+.iz-scroll .legal-footer {
+  padding: 28px 0 4px;
+}
+
 .iz-app {
   position: fixed;
   inset: 0 0 calc(70px + max(10px, env(safe-area-inset-bottom)));
