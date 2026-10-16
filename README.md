@@ -13,7 +13,7 @@
 
 Turfling runs a tournament night at the pitch: three teams, a league, an optional playoff and a final. One phone keeps the clock and the score, a TV can show the big scoreboard, and everyone else follows on their own phone. It runs in the browser, needs no account and keeps working offline. The interface is in English and Turkish.
 
-To try it, open [turfling.hamzabasaran.com](https://turfling.hamzabasaran.com) and choose **Load sample tournament** in Setup. The sample stays in your browser.
+To try it, open [turfling.hamzabasaran.com](https://turfling.hamzabasaran.com) and choose **Load sample tournament**. The sample stays in your browser.
 
 ## Features
 
@@ -103,7 +103,7 @@ Turkish and English privacy information is in `privacy.html`, linked from both i
 
 `js/demo.js` holds the single `PORTFOLIO_HOSTS` allowlist: `turfling.hamzabasaran.com`. The demo button never appears on workers.dev, even with `?demo=1`. For localhost/127.0.0.1 preview, use `?demo=1`.
 
-The button creates 15 synthetic players, three drawn teams and three completed matches locally. It refuses to replace existing players, a pool, archives, matches or a live connection. Nothing is uploaded until the visitor explicitly enables live sharing.
+A first-time visitor on that address lands on the Tournament tab, where a card loads the sample; Setup shows the same card. It creates 15 synthetic players, three drawn teams and three completed matches locally. It refuses to replace existing players, a pool, archives, matches or a live connection. Nothing is uploaded until the visitor explicitly enables live sharing.
 
 ## Tests
 
