@@ -38,7 +38,10 @@
 
   function createState() {
     return {
-      version: 1,
+      version: 2,
+      id: uid(),
+      playerPool: [],
+      archives: [],
       name: 'Halı Saha Turnuvası',
       players: [],
       teams: [
@@ -54,19 +57,117 @@
   }
 
   function isValidState(raw) {
-    return !!raw && typeof raw === 'object' && Array.isArray(raw.players) && Array.isArray(raw.teams) && raw.teams.length === TEAM_IDS.length;
+    const id = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(v);
+    const unique = (list) => new Set(list).size === list.length;
+    const players = (list) => Array.isArray(list) &&
+      list.every((p) => p && id(p.id) && typeof p.name === 'string') && unique(list.map((p) => p.id));
+    const match = (m) => {
+      if (!m || !id(m.id) || !['pending', 'live', 'done'].includes(m.status)) return false;
+      if ([m.home, m.away].some((team) => team != null && !TEAM_IDS.includes(team))) return false;
+      if (!Array.isArray(m.goals) || !m.goals.every((g) => g && id(g.id) && TEAM_IDS.includes(g.team) && (g.playerId == null || id(g.playerId)))) return false;
+      if (m.pens != null && !['home', 'away'].every((side) => Number.isSafeInteger(m.pens[side]) && m.pens[side] >= 0)) return false;
+      if (m.lineups == null) return true;
+      return typeof m.lineups === 'object' && !Array.isArray(m.lineups) &&
+        Object.entries(m.lineups).every(([team, ids]) => TEAM_IDS.includes(team) && Array.isArray(ids) && ids.every(id)) &&
+        unique(Object.values(m.lineups).flat());
+    };
+    const tournament = (t) => {
+      if (!t || typeof t !== 'object' || (t.id != null && !id(t.id)) || !players(t.players)) return false;
+      if (!Array.isArray(t.teams) || t.teams.length !== TEAM_IDS.length) return false;
+      if (!t.teams.every((team) => team && typeof team === 'object' &&
+        (team.id == null || TEAM_IDS.includes(team.id)) &&
+        (team.playerIds == null || Array.isArray(team.playerIds) && team.playerIds.every(id)))) return false;
+      return t.matches == null || Array.isArray(t.matches) && t.matches.every(match);
+    };
+    if (!tournament(raw) || (raw.playerPool != null && !players(raw.playerPool))) return false;
+    if (raw.archives == null) return true;
+    return Array.isArray(raw.archives) && unique(raw.archives.map((t) => t?.id)) &&
+      raw.archives.every((t) => tournament(t) && id(t.id) && Array.isArray(t.matches) && !t.archives && !t.playerPool);
   }
 
   function migrate(raw) {
     const base = createState();
     if (!isValidState(raw)) return base;
-    return {
+    const state = {
       ...base,
       ...raw,
+      version: 2,
+      id: raw.id || legacyId(raw),
+      playerPool: Array.isArray(raw.playerPool) ? structuredClone(raw.playerPool) : [],
+      archives: Array.isArray(raw.archives) ? structuredClone(raw.archives) : [],
       settings: { ...base.settings, ...raw.settings },
       matches: Array.isArray(raw.matches) ? raw.matches : [],
       lots: raw.lots || {},
     };
+    state.players = structuredClone(state.players);
+    state.teams = structuredClone(state.teams);
+    state.matches = structuredClone(state.matches);
+    syncPool(state);
+    for (const t of [state, ...state.archives]) {
+      t.settings = { ...base.settings, ...t.settings };
+      t.teams = t.teams.map((team, i) => ({ ...base.teams[i], ...team }));
+      for (const m of t.matches) {
+        if (m.status !== 'pending' && !m.lineups) {
+          m.lineups = defaultLineups(t, m);
+          m.lineupsInferred = true;
+        }
+      }
+      for (const p of t.players) {
+        if (!state.playerPool.some((x) => x.id === p.id)) state.playerPool.push({ ...p });
+      }
+    }
+    return state;
+  }
+
+  function legacyId(raw) {
+    const key = JSON.stringify([raw.players.map((p) => p.id).sort(), raw.name, raw.matches?.map((m) => m.id)]);
+    let hash = 2166136261;
+    for (const c of key) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+    return `legacy-${(hash >>> 0).toString(36)}`;
+  }
+
+  function syncPool(state) {
+    state.playerPool ||= [];
+    for (const p of state.players) {
+      const saved = state.playerPool.find((x) => x.id === p.id);
+      if (saved) Object.assign(saved, p);
+      else state.playerPool.push({ ...p });
+    }
+  }
+
+  function selectPlayer(state, id) {
+    const p = state.playerPool.find((x) => x.id === id);
+    if (!p || state.players.some((x) => x.id === id)) return false;
+    state.players.push({ ...p });
+    return true;
+  }
+
+  function mergePlayers(state, sourceId, targetId) {
+    const target = state.playerPool.find((p) => p.id === targetId);
+    if (!target || sourceId === targetId || !state.playerPool.some((p) => p.id === sourceId)) return { error: 'Birleştirilecek iki farklı oyuncu seçin.' };
+    const next = structuredClone(state);
+    const replace = (ids) => [...new Set(ids.map((id) => id === sourceId ? targetId : id))];
+    for (const t of [next, ...next.archives]) {
+      const sourceTeam = t.teams.find((team) => team.playerIds.includes(sourceId));
+      const targetTeam = t.teams.find((team) => team.playerIds.includes(targetId));
+      if (sourceTeam && targetTeam && sourceTeam.id !== targetTeam.id) return { error: 'Bu kayıtlar aynı turnuvada farklı takımlarda yer alıyor. Önce kadroları kontrol edin.' };
+      for (const m of t.matches) {
+        const lineups = matchLineups(t, m);
+        if (Object.values(lineups).some((ids) => ids.includes(sourceId)) && Object.values(lineups).some((ids) => ids.includes(targetId)) &&
+          !Object.values(lineups).some((ids) => ids.includes(sourceId) && ids.includes(targetId))) return { error: 'Bu kayıtlar aynı maçta rakip görünüyor. Önce maç kadrosunu kontrol edin.' };
+      }
+      const hasTarget = t.players.some((p) => p.id === targetId);
+      t.players = t.players.filter((p) => !hasTarget || p.id !== sourceId).map((p) => p.id === sourceId ? { ...p, id: targetId } : p);
+      for (const team of t.teams) team.playerIds = replace(team.playerIds);
+      for (const m of t.matches) {
+        if (m.lineups) for (const key of Object.keys(m.lineups)) m.lineups[key] = replace(m.lineups[key]);
+        for (const g of m.goals) if (g.playerId === sourceId) g.playerId = targetId;
+      }
+    }
+    next.playerPool = next.playerPool.filter((p) => p.id !== sourceId);
+    const selected = next.players.find((p) => p.id === targetId);
+    if (selected) selected.name = target.name;
+    return { state: next };
   }
 
   function shuffle(list, rng = Math.random) {
@@ -78,23 +179,31 @@
     return a;
   }
 
-  function addPlayers(state, names) {
+  function addPlayers(state, names, { allowDuplicate = false } = {}) {
     const existing = new Set(state.players.map((p) => p.name.toLocaleLowerCase('tr')));
     let added = 0;
     for (const raw of names) {
       const name = String(raw).trim().replace(/\s+/g, ' ');
       const key = name.toLocaleLowerCase('tr');
-      if (!name || existing.has(key)) continue;
+      if (!name || (!allowDuplicate && existing.has(key))) continue;
       existing.add(key);
       state.players.push({ id: uid(), name, pot: 0 });
       added++;
     }
+    syncPool(state);
     return added;
   }
 
   function removePlayer(state, playerId) {
+    if (state.matches.some((m) => m.status !== 'pending' &&
+      (Object.values(matchLineups(state, m)).some((ids) => ids.includes(playerId)) || m.goals.some((g) => g.playerId === playerId)))) return false;
+    syncPool(state);
     state.players = state.players.filter((p) => p.id !== playerId);
     for (const t of state.teams) t.playerIds = t.playerIds.filter((id) => id !== playerId);
+    for (const m of state.matches) {
+      if (m.status === 'pending' && m.lineups) for (const team of Object.keys(m.lineups)) m.lineups[team] = m.lineups[team].filter((id) => id !== playerId);
+    }
+    return true;
   }
 
   function teamOfPlayer(state, playerId) {
@@ -129,8 +238,168 @@
   }
 
   function applyDraw(state, rng) {
-    const result = drawTeams(state.players, rng);
+    const result = balancedDraw(state, rng);
     for (const t of state.teams) t.playerIds = result[t.id];
+  }
+
+  function balancedDraw(state, rng = Math.random) {
+    const pairs = new Map();
+    const history = (state.archives || []).filter((t) => t.id !== state.id);
+    history.forEach((t, index) => {
+      for (const team of t.teams) {
+        const ids = team.playerIds;
+        for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+          const key = JSON.stringify([ids[i], ids[j]].sort());
+          pairs.set(key, (pairs.get(key) || 0) + 1 + (index + 1) / Math.max(1, history.length));
+        }
+      }
+    });
+    const cost = (draw) => {
+      let repeats = 0;
+      const keepers = [];
+      for (const ids of Object.values(draw)) {
+        keepers.push(ids.filter((id) => state.players.find((p) => p.id === id)?.goalkeeper).length);
+        for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+          repeats += pairs.get(JSON.stringify([ids[i], ids[j]].sort())) || 0;
+        }
+      }
+      return [Math.max(...keepers) - Math.min(...keepers), repeats];
+    };
+    let best = drawTeams(state.players, rng), score = cost(best);
+    for (let i = 0; i < 300; i++) {
+      const next = drawTeams(state.players, rng), value = cost(next);
+      if (value[0] < score[0] || (value[0] === score[0] && value[1] < score[1])) {
+        best = next; score = value;
+      }
+    }
+    return best;
+  }
+
+  function defaultLineups(state, m) {
+    return Object.fromEntries([m.home, m.away].filter(Boolean).map((id) => [id, [...(state.teams.find((t) => t.id === id)?.playerIds || [])]]));
+  }
+
+  function matchLineups(state, m) {
+    return m.lineups || defaultLineups(state, m);
+  }
+
+  function setLineup(state, m, playerId, teamId) {
+    if (!state.players.some((p) => p.id === playerId) || (teamId && teamId !== m.home && teamId !== m.away)) return false;
+    const lineups = structuredClone(matchLineups(state, m));
+    // Bir golün sahibi, golün atıldığı taraftan yanlışlıkla çıkarılmasın.
+    if (m.goals.some((g) => g.playerId === playerId && (g.ownGoal ? (g.team === m.home ? m.away : m.home) : g.team) !== teamId)) return false;
+    for (const id of Object.keys(lineups)) lineups[id] = lineups[id].filter((p) => p !== playerId);
+    if (teamId) lineups[teamId].push(playerId);
+    m.lineups = lineups;
+    m.lineupsInferred = false;
+    return true;
+  }
+
+  function assignScorer(state, m, g, playerId, ownGoal = false) {
+    const previous = { ...g };
+    setScorer(g, null);
+    const side = ownGoal ? (g.team === m.home ? m.away : m.home) : g.team;
+    if (playerId && !setLineup(state, m, playerId, side)) {
+      Object.assign(g, previous);
+      return false;
+    }
+    setScorer(g, playerId, ownGoal);
+    return true;
+  }
+
+  function archiveTournament(state, now = Date.now()) {
+    if (!state.started || activeMatches(state).some((m) => m.status !== 'done') || !champion(state)) return false;
+    syncPool(state);
+    const { archives, playerPool, ...snapshot } = state;
+    const old = archives.find((t) => t.id === state.id);
+    const record = structuredClone({ ...snapshot, archivedAt: old?.archivedAt || now });
+    const index = archives.findIndex((t) => t.id === state.id);
+    if (index < 0) archives.push(record);
+    else archives[index] = record;
+    return true;
+  }
+
+  function resultError(state) {
+    for (const m of activeMatches(state)) {
+      const s = score(m);
+      if (m.status === 'done' && m.stage !== 'league' && s.home === s.away &&
+        (!Number.isSafeInteger(m.pens?.home) || !Number.isSafeInteger(m.pens?.away) || m.pens.home < 0 || m.pens.away < 0 || m.pens.home === m.pens.away)) return 'Berabere biten eleme maçının penaltı sonucunu girin.';
+    }
+    const trial = structuredClone(state);
+    for (const stage of ['playoff', 'final']) {
+      const original = state.matches.find((m) => m.stage === stage);
+      const m = trial.matches.find((m) => m.stage === stage);
+      if (!m || !original || original.status === 'pending' || !activeMatches(state).includes(original)) continue;
+      m.status = 'pending';
+      resolveKnockouts(trial);
+      if (blockingTies(trial).length || m.home !== original.home || m.away !== original.away) return 'Bu skor, oynanmış eleme maçlarının eşleşmesini değiştiriyor. Önce sonraki aşamanın kayıtlarını kontrol edin.';
+      Object.assign(m, structuredClone(original));
+    }
+    return null;
+  }
+
+  function nextTournament(state) {
+    if (state.started && !archiveTournament(state)) return null;
+    syncPool(state);
+    const next = createState();
+    next.playerPool = structuredClone(state.playerPool);
+    next.archives = structuredClone(state.archives);
+    next.settings = { ...state.settings, plannedDate: '', plannedStart: '', pitchEnd: '' };
+    return next;
+  }
+
+  function historyStats(state) {
+    const records = new Map((state.archives || []).map((t) => [t.id, t]));
+    if (state.started) records.set(state.id, state);
+    const players = new Map((state.playerPool || state.players).map((p) => [p.id, {
+      ...p, tournaments: 0, played: 0, won: 0, drawn: 0, lost: 0, goals: 0, ownGoals: 0, penaltyWins: 0,
+    }]));
+    const pairs = new Map();
+    const pair = (a, b) => {
+      const ids = [a, b].sort(), key = JSON.stringify(ids);
+      if (!pairs.has(key)) pairs.set(key, { ids, tournaments: 0, together: 0, against: 0, won: [0, 0], drawn: 0 });
+      return pairs.get(key);
+    };
+    let matches = 0, goals = 0, unknownGoals = 0, tournaments = 0;
+    for (const t of records.values()) {
+      const done = t.matches.filter((m) => m.status === 'done');
+      if (!done.length) continue;
+      if (activeMatches(t).every((m) => m.status === 'done') && champion(t)) tournaments++;
+      for (const p of t.players) {
+        if (!players.has(p.id)) players.set(p.id, { ...p, tournaments: 0, played: 0, won: 0, drawn: 0, lost: 0, goals: 0, ownGoals: 0, penaltyWins: 0 });
+        players.get(p.id).tournaments++;
+      }
+      for (const team of t.teams) for (let i = 0; i < team.playerIds.length; i++) for (let j = i + 1; j < team.playerIds.length; j++) pair(team.playerIds[i], team.playerIds[j]).tournaments++;
+      for (const m of done) {
+        matches++;
+        const s = score(m), lineups = matchLineups(t, m);
+        for (const side of ['home', 'away']) {
+          const ids = [...new Set(lineups[m[side]] || [])];
+          const gf = s[side], ga = s[side === 'home' ? 'away' : 'home'];
+          for (const id of ids) {
+            const p = players.get(id);
+            if (!p) continue;
+            p.played++;
+            p[gf > ga ? 'won' : gf < ga ? 'lost' : 'drawn']++;
+            if (gf === ga && winnerOf(m) === m[side]) p.penaltyWins++;
+          }
+          for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) pair(ids[i], ids[j]).together++;
+        }
+        for (const a of lineups[m.home] || []) for (const b of lineups[m.away] || []) {
+          const r = pair(a, b); r.against++;
+          if (s.home === s.away) r.drawn++;
+          else r.won[r.ids.indexOf(s.home > s.away ? a : b)]++;
+        }
+        for (const g of m.goals) {
+          if (g.team !== m.home && g.team !== m.away) continue;
+          goals++;
+          const p = players.get(g.playerId);
+          if (!p) unknownGoals++;
+          else p[g.ownGoal ? 'ownGoals' : 'goals']++;
+        }
+      }
+    }
+    return { players: [...players.values()], pairs: [...pairs.values()], matches, goals, unknownGoals, tournaments };
   }
 
   function newMatch(id, stage, home, away, round = null) {
@@ -190,7 +459,9 @@
   }
 
   function startMatch(state, m, now = Date.now()) {
+    const lineups = structuredClone(matchLineups(state, m));
     Object.assign(m, newMatch(m.id, m.stage, m.home, m.away, m.round), {
+      lineups,
       status: 'live',
       durationMin: stageMinutes(state.settings, m.stage),
       runningSince: now,
@@ -215,6 +486,8 @@
   }
 
   function resetMatch(m) {
+    delete m.lineups;
+    delete m.lineupsInferred;
     Object.assign(m, newMatch(m.id, m.stage, m.home, m.away, m.round));
   }
 
@@ -367,6 +640,10 @@
     if (!po || !fin) return;
     const setTeams = (m, home, away) => {
       if (m.status !== 'pending') return;
+      if (m.home !== home || m.away !== away) {
+        delete m.lineups;
+        delete m.lineupsInferred;
+      }
       m.home = home;
       m.away = away;
     };
@@ -518,6 +795,17 @@
     createState,
     isValidState,
     migrate,
+    syncPool,
+    selectPlayer,
+    mergePlayers,
+    matchLineups,
+    setLineup,
+    assignScorer,
+    archiveTournament,
+    resultError,
+    nextTournament,
+    historyStats,
+    balancedDraw,
     addPlayers,
     removePlayer,
     teamOfPlayer,

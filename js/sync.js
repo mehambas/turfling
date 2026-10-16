@@ -33,6 +33,45 @@
     return state;
   }
 
+  function libraryOf(state) {
+    return Array.isArray(state?.playerPool) && Array.isArray(state?.archives)
+      ? { playerPool: state.playerPool, archives: state.archives } : null;
+  }
+
+  function libraryDelta(previous, next) {
+    if (!next || JSON.stringify(previous) === JSON.stringify(next)) return null;
+    const old = new Map((previous?.archives || []).map((t) => [t.id, t]));
+    const ids = new Set(next.archives.map((t) => t.id));
+    const patch = {
+      ...(!previous ? { replace: true } : {}),
+      ...(JSON.stringify(previous?.playerPool) !== JSON.stringify(next.playerPool) ? { playerPool: next.playerPool } : {}),
+      upsertArchives: next.archives.filter((t) => JSON.stringify(old.get(t.id)) !== JSON.stringify(t)),
+      deleteArchiveIds: [...old.keys()].filter((id) => !ids.has(id)),
+    };
+    return patch.replace || patch.playerPool || patch.upsertArchives.length || patch.deleteArchiveIds.length ? patch : null;
+  }
+
+  function libraryBatch(patch) {
+    if (!patch) return null;
+    const batch = { ...patch, upsertArchives: [] };
+    let bytes = new TextEncoder().encode(JSON.stringify(batch)).byteLength;
+    for (const record of patch.upsertArchives) {
+      const size = new TextEncoder().encode(JSON.stringify(record)).byteLength + 1;
+      if (batch.upsertArchives.length && bytes + size > 512 * 1024) break;
+      batch.upsertArchives.push(record);
+      bytes += size;
+    }
+    return batch;
+  }
+
+  function applyLibraryPatch(previous, patch) {
+    if (!patch) return previous;
+    const records = new Map((patch.replace ? [] : previous?.archives || []).map((t) => [t.id, t]));
+    for (const id of patch.deleteArchiveIds) records.delete(id);
+    for (const record of patch.upsertArchives) records.set(record.id, record);
+    return { playerPool: patch.playerPool ?? previous?.playerPool ?? [], archives: [...records.values()] };
+  }
+
   function channel(url, { onMessage, onStatus = () => {}, WebSocketImpl = globalThis.WebSocket } = {}) {
     let ws = null;
     let open = false;
@@ -153,6 +192,11 @@
     let fatal = null;
     let retryDelay = 0;
     let beatTimer = null;
+    let confirmedLibrary = null;
+    let confirmedLibraryRev = null;
+    let libraryReady = false;
+    let hydrateTimer = null;
+    let messageQueue = Promise.resolve();
 
     function read() {
       try {
@@ -194,6 +238,9 @@
     }
 
     function adopt(snapshot, receivedAt) {
+      confirmedLibrary = structuredClone(libraryOf(snapshot.state));
+      confirmedLibraryRev = snapshot.libraryRev ?? 0;
+      libraryReady = true;
       cfg.rev = snapshot.rev;
       cfg.holder = snapshot.holder;
       cfg.pending = 0;
@@ -223,22 +270,58 @@
       if (!cfg || !cfg.pending || inflight || fatal || !isHolder()) return;
       inflight = true;
       const id = cfg.id;
+      const session = cfg;
+      // Yeniden açılan cihazın bekleyen yerel değişiklikleri korunur; önce sunucuda
+      // zaten bulunan kütüphane öğrenilir, böylece tamamı tekrar gönderilmez.
+      if (!libraryReady && cfg.rev > 0) {
+        let snapshot;
+        try { snapshot = await call('GET', `/api/t/${id}/admin`); } catch {}
+        if (cfg !== session || !isHolder()) { inflight = false; return emit(); }
+        if (!snapshot?.ok) {
+          inflight = false;
+          if (snapshot && snapshot.status < 500) fatal = snapshot.data?.error || `http_${snapshot.status}`;
+          else { netError = true; retryLater(); }
+          return emit();
+        }
+        if (snapshot.data.holder && snapshot.data.holder !== cfg.device) {
+          inflight = false;
+          lose(snapshot.data, snapshot.receivedAt);
+          return emit();
+        }
+        confirmedLibrary = structuredClone(libraryOf(snapshot.data.state));
+        confirmedLibraryRev = snapshot.data.libraryRev ?? 0;
+        libraryReady = true;
+        cfg.rev = snapshot.data.rev;
+        write();
+      }
       const sent = cfg.pending;
+      const { playerPool, archives, ...currentState } = getState();
+      const sentLibrary = structuredClone(libraryOf(getState()));
+      const patch = libraryBatch(libraryDelta(confirmedLibrary, sentLibrary));
+      const acknowledgedLibrary = applyLibraryPatch(confirmedLibrary, patch);
+      const moreLibrary = !!libraryDelta(acknowledgedLibrary, sentLibrary);
       let res = null;
       try {
-        res = await call('PUT', `/api/t/${id}`, { device: cfg.device, baseRev: cfg.rev, sentAt: Date.now(), state: getState() });
+        res = await call('PUT', `/api/t/${id}`, {
+          device: cfg.device, baseRev: cfg.rev, sentAt: Date.now(), state: currentState,
+          libraryProtocol: 1, ...(patch ? { library: patch } : {}),
+        });
       } catch {}
       inflight = false;
-      if (!cfg || cfg.id !== id) return emit();
+      if (cfg !== session) return emit();
+      if (!isHolder()) return emit();
 
       if (!res) {
         netError = true;
         retryLater();
       } else if (res.ok) {
+        confirmedLibrary = acknowledgedLibrary;
+        confirmedLibraryRev = res.data.libraryRev ?? 0;
+        libraryReady = true;
         netError = false;
         retryDelay = 0;
         cfg.rev = res.data.rev;
-        cfg.pending = Math.max(0, cfg.pending - sent);
+        if (!moreLibrary) cfg.pending = Math.max(0, cfg.pending - sent);
         write();
         if (cfg.pending) schedule();
       } else if (res.status === 409 && res.data && (res.data.holder === cfg.device || res.data.holder == null)) {
@@ -261,16 +344,44 @@
     }
 
     function onMessage(msg, receivedAt) {
-      if (!cfg) return;
-      if (msg.holder === cfg.device) {
-        cfg.holder = cfg.device;
-        if (!cfg.pending && msg.rev > cfg.rev) cfg.rev = msg.rev;
+      const session = cfg;
+      if (!session || msg.rev < cfg.rev) return;
+      // Yetki kaybı, özel arşivin indirilmesini beklemez.
+      if (msg.holder != null && msg.holder !== cfg.device && isHolder()) {
+        const lost = cfg.pending;
+        cfg.holder = msg.holder;
+        cfg.pending = 0;
         write();
-      } else if (msg.holder != null) {
-        if (isHolder()) lose(msg, receivedAt);
-        else adopt(msg, receivedAt);
+        onNotice({ kind: 'lost', lost });
+        emit();
       }
-      emit();
+      messageQueue = messageQueue.then(async () => {
+        if (cfg !== session || msg.rev < cfg.rev || (isHolder() && cfg.pending)) return;
+        let snapshot = msg, at = receivedAt;
+        if (!libraryReady || confirmedLibraryRev !== (msg.libraryRev ?? 0)) {
+          const res = await call('GET', `/api/t/${cfg.id}/admin`);
+          if (cfg !== session) return;
+          if (!res.ok) {
+            if (res.status === 401 || res.status === 404) { fatal = res.data?.error || `http_${res.status}`; emit(); return; }
+            throw new Error('private_snapshot_failed');
+          }
+          snapshot = res.data;
+          at = res.receivedAt;
+        } else if (snapshot.state && confirmedLibrary) {
+          snapshot = { ...snapshot, state: { ...snapshot.state, ...confirmedLibrary } };
+        }
+        if (cfg !== session || snapshot.rev < cfg.rev || (isHolder() && cfg.pending)) return;
+        netError = false;
+        clearTimeout(hydrateTimer);
+        adopt(snapshot, at);
+        emit();
+      }).catch(() => {
+        if (cfg !== session) return;
+        netError = true;
+        clearTimeout(hydrateTimer);
+        hydrateTimer = setTimeout(() => onMessage(msg, receivedAt), retryMs);
+        emit();
+      });
     }
 
     // İzleyiciler skorun güncel olup olmadığını bu haberden anlar: gelmezse yönetici cihazı bağlı değildir.
@@ -309,6 +420,12 @@
       everConnected = false;
       fatal = null;
       retryDelay = 0;
+      clearTimeout(hydrateTimer);
+      hydrateTimer = null;
+      confirmedLibrary = null;
+      confirmedLibraryRev = null;
+      libraryReady = false;
+      messageQueue = Promise.resolve();
     }
 
     if (cfg) {
@@ -391,5 +508,5 @@
     };
   }
 
-  return { CONFIG_KEY, parseAdminHash, localize, channel, admin };
+  return { CONFIG_KEY, parseAdminHash, localize, channel, libraryDelta, admin };
 });

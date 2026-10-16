@@ -34,6 +34,7 @@
     moveMenu: null,
     sheet: false,
     sheetMatch: null,
+    poolOpen: true,
     scorersOpen: false,
     rulesOpen: false,
   };
@@ -47,7 +48,13 @@
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return T.migrate(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        try {
+          if (parsed.version !== 2 && !localStorage.getItem('halisaha-turnuva-ilk-yedek')) localStorage.setItem('halisaha-turnuva-ilk-yedek', raw);
+        } catch (err) { console.warn('İlk sürüm yedeği yazılamadı', err); }
+        return T.migrate(parsed);
+      }
     } catch (err) {
       console.warn('Kayıt okunamadı', err);
     }
@@ -55,6 +62,8 @@
   }
 
   function saveState({ sync = true } = {}) {
+    T.syncPool(state);
+    if (state.archives.some((t) => t.id === state.id)) T.archiveTournament(state);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (err) {
@@ -164,6 +173,7 @@
       $('#view').className = `view view-${ui.tab}${readOnly() ? ' is-readonly' : ''}`;
       if (ui.tab === 'dashboard') setView(renderDashboard());
       else if (ui.tab === 'fixtures') setView(renderFixtures());
+      else if (ui.tab === 'history') setView(HistoryViews.render(state, ui));
       else setView(renderSetup());
     }
     renderSheet();
@@ -235,6 +245,10 @@
     'alerts-toggle',
     'match',
     'sheet-back',
+    'history-player',
+    'history-tournament',
+    'history-back',
+    'history-match',
   ]);
 
   function liveLinks() {
@@ -252,6 +266,8 @@
   }
 
   function liveErrorText(error) {
+    if (error === 'upgrade_required') return 'Geçmişi korumak için sayfayı yenileyip güncel sürüme geçin.';
+    if (error === 'too_large') return 'Arşiv gönderim sınırına ulaştı. Tüm verileri Yedek → İndir ile kaydedin.';
     if (error === 'unauthorized' || error === 'not_found') return 'Yayın bulunamadı ya da yönetici linki geçersiz.';
     if (error === 'too_large') return 'Turnuva verisi yayın için fazla büyük.';
     return 'Sunucu değişikliği kabul etmedi.';
@@ -537,6 +553,7 @@
         ${ui.finishing ? renderPensForm(m) : ''}
         <footer class="lc-foot">
           <button class="lc-cancel" data-action="cancel-match">Maçı iptal et</button>
+          <button class="btn btn-sm" data-action="history-match" data-tournament="${state.id}" data-id="${m.id}">Kadro</button>
           ${ui.finishing ? '' : '<button class="btn btn-lime btn-lg lc-finish" data-action="finish-match">Maçı bitir</button>'}
         </footer>
       </div>
@@ -553,10 +570,12 @@
 
   // Kendi kalesine atabilecek olan rakip takımdır; "Diğer…" yalnız o maçta oynamayan takımdan yardıma gelen içindir.
   function scorerGroups(m, teamId) {
-    const roster = (t) => (t ? t.playerIds.map(player).filter(Boolean) : []);
+    const lineups = T.matchLineups(state, m);
+    const roster = (t) => (t ? (lineups[t.id] || []).map(player).filter(Boolean) : []);
     const opp = team(m.home === teamId ? m.away : m.home);
     const rest = state.teams.find((t) => t.id !== m.home && t.id !== m.away);
-    return { own: roster(team(teamId)), opp, against: roster(opp), rest, guests: roster(rest) };
+    const playing = new Set(Object.values(lineups).flat());
+    return { own: roster(team(teamId)), opp, against: roster(opp), rest, guests: state.players.filter((p) => !playing.has(p.id)) };
   }
 
   function goalChip(g, withDot) {
@@ -791,7 +810,7 @@
         <span class="fx-team fx-home">${side('home')}</span>
         <span class="fx-score">${s.home} – ${s.away}</span>
         <span class="fx-team fx-away">${side('away')}</span>
-        <span class="fx-act">${readonly ? '' : '<button class="btn-live" data-action="tab" data-tab="dashboard"><span class="dot"></span>Canlı</button>'}</span>
+        <span class="fx-act">${readonly ? '' : `<button class="btn-live" data-action="tab" data-tab="dashboard"><span class="dot"></span>Canlı</button><button class="btn btn-sm" data-action="history-match" data-tournament="${state.id}" data-id="${m.id}">Kadro</button>`}</span>
       </div>`;
     }
     let time = '';
@@ -824,6 +843,7 @@
         }
       }
     }
+    if (!readonly && !skipped && m.home && m.away) act += `<button class="btn btn-sm" data-action="history-match" data-tournament="${state.id}" data-id="${m.id}">Kadro</button>`;
     return `<div class="fx-row is-${skipped ? 'skipped' : m.status} is-${m.stage}">
       <span class="fx-label">${label}</span>
       <span class="fx-time">${time}</span>
@@ -875,6 +895,10 @@
           : '<p class="sc-hint">Alt alta yazılmış bir listeyi yapıştırırsanız hepsi birden eklenir.</p>'
       }
       ${playersFoot(n)}
+      <details class="pool-picker" ${ui.poolOpen ? 'open' : ''}><summary>Oyuncu havuzundan seç</summary>
+        <p class="sc-hint">Bu turnuvaya katılacakları ekleyin. Katılmayanların geçmişi korunur.</p>
+        ${state.playerPool.filter((p) => !state.players.some((x) => x.id === p.id)).map((p) => `<div class="history-item"><span>${esc(p.name)}</span><button class="btn btn-sm" data-action="pool-select" data-id="${p.id}">Ekle</button></div>`).join('') || '<p class="sc-hint">Havuzdaki herkes bu turnuvada seçili.</p>'}
+      </details>
     </section>`;
   }
 
@@ -885,7 +909,8 @@
     return `<li class="pl-row">
       <input class="pl-input pl-name" data-field="player-name" data-id="${p.id}" value="${esc(p.name)}" maxlength="40" aria-label="Oyuncu adı">
       <span class="pot"><select data-field="player-pot" data-id="${p.id}" aria-label="${esc(p.name)}: torba" title="Torba: benzer seviyedekileri aynı torbaya koyun">${pots}</select>${ICONS.chevron}</span>
-      <button class="icon-btn icon-ghost icon-sm" data-action="player-remove" data-id="${p.id}" aria-label="${esc(p.name)}: sil" title="Sil">${ICONS.x}</button>
+      <label class="keeper-choice" title="Kaleci"><input type="checkbox" data-field="player-keeper" data-id="${p.id}" aria-label="${esc(p.name)}: kaleci" ${p.goalkeeper ? 'checked' : ''}>K</label>
+      <button class="icon-btn icon-ghost icon-sm" data-action="player-remove" data-id="${p.id}" aria-label="${esc(p.name)}: katılımcılardan çıkar" title="Katılımcılardan çıkar">${ICONS.x}</button>
     </li>`;
   }
 
@@ -905,12 +930,13 @@
   function renderData() {
     return `<section class="card setup-card" aria-labelledby="h-data">
       <h2 class="card-title" id="h-data">Yedek</h2>
+      <p class="sc-hint">Oyuncu havuzu, mevcut turnuva ve tüm arşiv birlikte yedeklenir.</p>
       <div class="btn-row">
         <button class="btn btn-sm" data-action="export">${ICONS.download}İndir</button>
         <button class="btn btn-sm" data-action="import">${ICONS.upload}Yükle</button>
         <span class="spacer"></span>
         ${state.started ? '<button class="btn btn-sm btn-text-danger" data-action="reset-results">Sonuçları sıfırla</button>' : ''}
-        <button class="btn btn-sm btn-text-danger" data-action="reset-all">Her şeyi sil</button>
+        <button class="btn btn-primary btn-sm" data-action="new-tournament">Yeni turnuva</button>
       </div>
     </section>`;
   }
@@ -1165,9 +1191,25 @@
       el.innerHTML = '';
       return;
     }
-    const html = { confirm: confirmHtml, goal: goalHtml, summary: summaryHtml }[dialog.kind] || editHtml;
+    const html = { confirm: confirmHtml, goal: goalHtml, summary: summaryHtml, 'history-match': historyMatchHtml, 'merge-player': mergePlayerHtml }[dialog.kind] || editHtml;
     el.innerHTML = html();
     if (!el.open) el.showModal();
+  }
+
+  function historyTarget({ draft = true } = {}) {
+    const t = dialog.tournamentId === state.id ? state : state.archives.find((t) => t.id === dialog.tournamentId);
+    return { t, m: draft && dialog.draftMatch ? dialog.draftMatch : t?.matches.find((m) => m.id === dialog.matchId) };
+  }
+
+  function historyMatchHtml() {
+    const { t, m } = historyTarget();
+    return t && m ? HistoryViews.matchEditor(t, m, readOnly(), dialog.error) : '<div class="dialog-body"><p>Maç bulunamadı.</p><button class="btn" data-action="dialog-cancel">Kapat</button></div>';
+  }
+
+  function mergePlayerHtml() {
+    const source = state.playerPool.find((p) => p.id === dialog.sourcePlayer);
+    const stats = T.historyStats(state);
+    return `<div class="dialog-body"><h2>Oyuncu kayıtlarını birleştir</h2><p>${esc(source?.name)} yanlışlıkla iki kez kaydedildiyse diğer kaydını seçin. İki kaydın maç ve golleri seçilen kişide toplanır. İşlemden önce tüm verilerin yedeği indirilir.</p><label class="history-goal"><span>Korunacak kişi</span><select id="merge-target">${stats.players.filter((p) => p.id !== dialog.sourcePlayer).map((p) => `<option value="${p.id}">${esc(p.name)} · ${p.played} maç</option>`).join('')}</select></label>${dialog.error ? `<p class="sc-foot is-warn" role="alert">${esc(dialog.error)}</p>` : ''}<div class="dialog-actions"><button class="btn" data-action="dialog-cancel">Vazgeç</button><button class="btn btn-primary" data-action="merge-confirm">Birleştir</button></div></div>`;
   }
 
   function confirmHtml() {
@@ -1288,7 +1330,7 @@
 
   function closeDialog(result) {
     const resolve = dialog.resolve;
-    Object.assign(dialog, { kind: null, opts: null, resolve: null, matchId: null, error: '' });
+    Object.assign(dialog, { kind: null, opts: null, resolve: null, matchId: null, error: '', draftMatch: null, originalMatch: null });
     renderDialog();
     if (resolve) resolve(result);
   }
@@ -1411,11 +1453,18 @@
     }
   }
 
-  function addPlayers(names) {
+  async function addPlayers(names) {
     const wanted = names.map((x) => x.trim()).filter(Boolean);
+    let allowDuplicate = false;
+    const matches = state.playerPool.filter((p) => wanted.some((name) => name.replace(/\s+/g, ' ').toLocaleLowerCase('tr') === p.name.toLocaleLowerCase('tr')));
+    if (matches.length) {
+      const ok = await confirmDialog({ title: 'Havuzda aynı isim var', body: `${matches.map((p) => p.name).join(', ')} havuzda bulunuyor. Mevcut kişiyi “Oyuncu havuzundan seç” listesinden ekleyin. Bu farklı bir kişiyse yeni kayıt oluşturabilirsiniz.`, ok: 'Farklı kişi, yeni ekle', cancel: 'Havuzdan seçeceğim' });
+      if (!ok) return;
+      allowDuplicate = wanted.length === 1;
+    }
     let added = 0;
     commit(() => {
-      added = T.addPlayers(state, wanted);
+      added = T.addPlayers(state, wanted, { allowDuplicate });
     });
     if (wanted.length > 1) toast(`${added} oyuncu eklendi${added < wanted.length ? ` (${wanted.length - added} isim zaten listedeydi)` : ''}`, 'ok');
     else if (!added) {
@@ -1445,6 +1494,84 @@
   }
 
   const actions = {
+    'merge-player'(el) {
+      Object.assign(dialog, { kind: 'merge-player', sourcePlayer: el.dataset.id, error: '' }); renderDialog();
+    },
+    'merge-confirm'() {
+      const id = $('#merge-target')?.value;
+      const result = T.mergePlayers(state, dialog.sourcePlayer, id);
+      if (result.error) { dialog.error = result.error; return renderDialog(); }
+      actions.export();
+      state = result.state;
+      ui.historyPlayer = id;
+      saveState(); closeDialog(true); render();
+    },
+    'pool-select'(el) {
+      commit(() => T.selectPlayer(state, el.dataset.id));
+    },
+    'history-player'(el) {
+      Object.assign(ui, { tab: 'history', historyPlayer: el.dataset.id, historyTournament: null }); render();
+    },
+    'history-tournament'(el) {
+      Object.assign(ui, { tab: 'history', historyTournament: el.dataset.id, historyPlayer: null }); render();
+    },
+    'history-back'() {
+      Object.assign(ui, { historyTournament: null, historyPlayer: null }); render();
+    },
+    'history-match'(el) {
+      Object.assign(dialog, { kind: 'history-match', tournamentId: el.dataset.tournament, matchId: el.dataset.id, error: '', draftMatch: null });
+      const { m } = historyTarget();
+      if (!m) return closeDialog(false);
+      dialog.originalMatch = JSON.stringify(m);
+      dialog.draftMatch = structuredClone(m);
+      renderDialog();
+    },
+    'history-goal-add'(el) {
+      const { m } = historyTarget();
+      if (m?.status !== 'done') return;
+      T.addGoal(m, el.dataset.team);
+      renderDialog();
+    },
+    'history-goal-remove'(el) {
+      const { m } = historyTarget();
+      if (m?.status !== 'done') return;
+      T.removeGoal(m, el.dataset.id);
+      renderDialog();
+    },
+    'history-save'() {
+      const { t, m } = historyTarget({ draft: false });
+      if (!t || !m || !dialog.draftMatch) return;
+      if (JSON.stringify(m) !== dialog.originalMatch) {
+        dialog.error = 'Bu maç başka bir işlemle değişti. Pencereyi kapatıp güncel kaydı yeniden açın.';
+        return renderDialog();
+      }
+      const trial = structuredClone(t);
+      const candidate = structuredClone(dialog.draftMatch);
+      const score = T.score(candidate);
+      if (score.home !== score.away || candidate.stage === 'league') candidate.pens = null;
+      trial.matches[trial.matches.findIndex((x) => x.id === m.id)] = candidate;
+      const error = T.resultError(trial);
+      if (error) { dialog.error = error; return renderDialog(); }
+      Object.assign(m, candidate);
+      T.resolveKnockouts(t);
+      if (t !== state) t.correctedAt = Date.now();
+      saveState(); closeDialog(true); render();
+    },
+    'archive-tournament'() {
+      if (!T.archiveTournament(state)) return toast('Arşivlemek için tüm maçları bitirin ve şampiyonu belirleyin.', 'warn');
+      saveState(); render(); toast('Turnuva arşivlendi', 'ok');
+    },
+    async 'new-tournament'() {
+      if (state.started && (T.activeMatches(state).some((m) => m.status !== 'done') || !T.champion(state))) return toast('Önce mevcut turnuvayı tamamlayın. Geçmiş maçlarınız korunacak.', 'warn');
+      const ok = await confirmDialog({ title: 'Yeni turnuva oluşturulsun mu?', body: state.started ? 'Mevcut turnuva arşive kaydedilecek. Katılımcıları havuzdan seçip torbaları düzenleyerek yeni kura çekebilirsiniz.' : 'Hazırlıktaki kadro temizlenecek. Oyuncu havuzu ve turnuva arşivi korunacak.', ok: 'Yeni turnuva oluştur' });
+      if (!ok) return;
+      actions.export();
+      const next = T.nextTournament(state);
+      if (!next) return;
+      state = next;
+      Object.assign(ui, { tab: 'setup', poolOpen: true, historyTournament: null, historyPlayer: null, goalPicker: null, finishing: false });
+      saveState(); render();
+    },
     tab(el) {
       ui.tab = el.dataset.tab;
       ui.goalPicker = null;
@@ -1496,25 +1623,18 @@
       render();
     },
 
-    'player-add'() {
+    async 'player-add'() {
       const input = $('#new-player');
       if (!input || !input.value.trim()) return input?.focus();
-      addPlayers([input.value]);
+      await addPlayers([input.value]);
     },
 
     async 'player-remove'(el) {
       const p = player(el.dataset.id);
       if (!p) return;
-      if (state.started) {
-        const ok = await confirmDialog({
-          title: `${p.name} silinsin mi?`,
-          body: 'Turnuva başladı. Oyuncunun attığı goller skorda kalır ama gol krallığından çıkar.',
-          ok: 'Sil',
-          danger: true,
-        });
-        if (!ok) return;
-      }
-      commit(() => T.removePlayer(state, p.id));
+      let removed;
+      commit(() => { removed = T.removePlayer(state, p.id); });
+      if (!removed) toast('Oyuncunun maç kaydı var. Gerekirse ilgili maçın kadrosunu değiştirin.', 'warn');
     },
 
     async 'draw-teams'() {
@@ -1662,7 +1782,7 @@
       commit(() => {
         const g = T.addGoal(m, teamId, Date.now());
         g.ms = ms;
-        T.setScorer(g, el.dataset.player, el.dataset.own === '1');
+        if (!T.assignScorer(state, m, g, el.dataset.player, el.dataset.own === '1')) toast('Oyuncunun takım bilgisi diğer golleriyle çelişiyor. Gol sahibi seçilmedi.', 'warn');
       });
     },
 
@@ -1692,7 +1812,9 @@
       const m = liveMatch();
       const g = m?.goals.find((x) => x.id === el.dataset.goal);
       ui.goalPicker = null;
-      if (g && el.dataset.player) commit(() => T.setScorer(g, el.dataset.player, el.dataset.own === '1'));
+      if (g && el.dataset.player) commit(() => {
+        if (!T.assignScorer(state, m, g, el.dataset.player, el.dataset.own === '1')) toast('Oyuncunun takım bilgisi diğer golleriyle çelişiyor.', 'warn');
+      });
       else render();
     },
 
@@ -1848,6 +1970,7 @@
     },
 
     async 'reset-results'() {
+      if (state.archives.some((t) => t.id === state.id)) return toast('Bu turnuva arşivde. Devam etmek için “Yeni turnuva”yı kullanın.', 'warn');
       const ok = await confirmDialog({
         title: 'Sonuçlar sıfırlansın mı?',
         body: 'Oynanan tüm maçlar, skorlar ve goller silinir. Oyuncular, takımlar ve ayarlar kalır.',
@@ -1855,26 +1978,13 @@
         danger: true,
       });
       if (!ok) return;
+      actions.export();
       Object.assign(ui, { tab: 'setup', finishing: false, goalPicker: null });
       commit(() => {
         state.matches = [];
         state.started = false;
         state.lots = {};
       });
-    },
-
-    async 'reset-all'() {
-      const ok = await confirmDialog({
-        title: 'Her şey silinsin mi?',
-        body: 'Oyuncular, takımlar, ayarlar ve sonuçlar silinir. Bu geri alınamaz; önce yedek indirmek isteyebilirsiniz.',
-        ok: 'Hepsini sil',
-        danger: true,
-      });
-      if (!ok) return;
-      state = T.createState();
-      Object.assign(ui, { tab: 'setup', finishing: false, goalPicker: null });
-      saveState();
-      render();
     },
 
     async 'live-start'() {
@@ -1997,6 +2107,10 @@
     await fn(el, e);
   });
 
+  document.addEventListener('toggle', (e) => {
+    if (e.target.matches?.('.pool-picker') && e.target.isConnected) ui.poolOpen = e.target.open;
+  }, true);
+
   document.addEventListener('input', (e) => {
     const el = e.target;
     if (readOnly()) return;
@@ -2048,10 +2162,35 @@
     } else if (field === 'player-pot') {
       const p = player(el.dataset.id);
       if (p) commit(() => (p.pot = Number(el.value)));
+    } else if (field === 'player-keeper') {
+      const p = player(el.dataset.id);
+      if (p) commit(() => (p.goalkeeper = el.checked));
+    } else if (field === 'history-lineup') {
+      const { t, m } = historyTarget();
+      if (!t || !m) return;
+      if (!T.setLineup(t, m, el.dataset.id, el.value)) toast('Bu oyuncunun gol kaydı var. Önce gol sahibini düzeltin.', 'warn');
+      renderDialog();
+    } else if (field === 'history-scorer') {
+      const { t, m } = historyTarget();
+      const g = m?.goals.find((g) => g.id === el.dataset.id);
+      if (!g) return;
+      const own = el.value.startsWith('og:'), id = own ? el.value.slice(3) : el.value;
+      if (!T.assignScorer(t, m, g, id, own)) {
+        toast('Oyuncunun diğer golleriyle çelişen bir takım seçildi.', 'warn');
+      }
+      renderDialog();
+    } else if (field === 'history-pens') {
+      const { m } = historyTarget();
+      if (!m) return;
+      m.pens ||= { home: null, away: null };
+      m.pens[el.dataset.side] = el.value === '' ? null : Number(el.value);
     } else if (field === 'goal-scorer') {
-      const g = match(el.dataset.match)?.goals.find((x) => x.id === el.dataset.goal);
+      const m = match(el.dataset.match);
+      const g = m?.goals.find((x) => x.id === el.dataset.goal);
       const ownGoal = el.value.startsWith('og:');
-      if (g) commit(() => T.setScorer(g, ownGoal ? el.value.slice(3) : el.value, ownGoal));
+      if (g) commit(() => {
+        if (!T.assignScorer(state, m, g, ownGoal ? el.value.slice(3) : el.value, ownGoal)) toast('Oyuncunun takım bilgisi diğer golleriyle çelişiyor.', 'warn');
+      });
     }
   });
 
@@ -2098,8 +2237,9 @@
       data = null;
     }
     if (!T.isValidState(data)) return toast('Bu dosya geçerli bir turnuva yedeği değil', 'warn');
-    const ok = await confirmDialog({ title: 'Yedek yüklensin mi?', body: 'Mevcut turnuva verileri bu yedekle değiştirilecek.', ok: 'Yükle', danger: true });
+    const ok = await confirmDialog({ title: 'Yedek yüklensin mi?', body: 'Oyuncu havuzu, mevcut turnuva ve arşiv bu yedekle değiştirilecek. Önce mevcut verilerinizin yedeği indirilecek.', ok: 'Yükle', danger: true });
     if (!ok) return;
+    actions.export();
     state = T.migrate(data);
     T.resolveKnockouts(state);
     Object.assign(ui, { tab: state.started ? 'dashboard' : 'setup', finishing: false, goalPicker: null });

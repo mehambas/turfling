@@ -5,6 +5,7 @@ const name = (list, id) => (Array.isArray(list) ? list.find((x) => x?.id === id)
 // Yalnız canlı maçta yeni çıkan goller bildirilir; bitmiş bir maçın düzeltilmesi ya da yayının ilk hâli bildirim değildir.
 export function goalNotices(before, after) {
   if (!before) return [];
+  if (before.id && after.id && before.id !== after.id) return [];
   const known = new Set(before.matches.flatMap((m) => (Array.isArray(m?.goals) ? m.goals.map((g) => g?.id) : [])));
   const notices = [];
   for (const m of after.matches) {
@@ -41,6 +42,7 @@ function leagueChampion(state) {
 // Final bir kazananla bittiyse iki bildirim yerine yalnız şampiyon bildirilir; final yoksa ligin son maçı için de öyle.
 export function resultNotices(before, after) {
   if (!before) return [];
+  if (before.id && after.id && before.id !== after.id) return [];
   const wasLive = new Set(before.matches.filter((m) => m?.status === 'live').map((m) => m.id));
   const team = (id) => name(after.teams, id) ?? id;
   const champ = leagueChampion(before) ? null : leagueChampion(after);

@@ -14,6 +14,7 @@ const ASSETS = [
   '/js/sync.js',
   '/js/crests.js',
   '/js/views.js',
+  '/js/history.js',
   '/js/app.js',
   '/js/izle.js',
   '/manifest.webmanifest',

@@ -2,12 +2,13 @@ import { DurableObject } from 'cloudflare:workers';
 import { goalNotices, resultNotices } from './notices.js';
 import { publicKeyOf, sendPush, toSubscription, vapidKeys } from './push.js';
 import { timerAlerts, timerNotice } from './timer.js';
+import Tournament from '../../js/tournament.js';
 
 const ID_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 const ID_LENGTH = 10;
 const ID_PATTERN = new RegExp(`^[${ID_ALPHABET}]{${ID_LENGTH}}$`);
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_SUBSCRIPTION_BYTES = 4 * 1024;
 const MAX_SUBSCRIPTIONS = 500;
 const PUSH_PREFIX = 'push:';
@@ -54,6 +55,12 @@ const fromHex = (hex) => new Uint8Array(hex.match(/../g).map((h) => parseInt(h, 
 
 const isState = (s) =>
   !!s && typeof s === 'object' && !Array.isArray(s) && Array.isArray(s.players) && Array.isArray(s.teams) && Array.isArray(s.matches);
+
+const publicState = (state) => {
+  if (!state) return null;
+  const { playerPool, archives, libraryChunks, ...current } = state;
+  return current;
+};
 
 const stub = (env, id) => env.TURNUVA.get(env.TURNUVA.idFromName(id));
 
@@ -108,7 +115,7 @@ export default {
       return json({ id, adminToken }, 201);
     }
 
-    const route = pathname.match(/^\/api\/t\/([^/]+)(?:\/(ws|takeover|push|admin-push))?$/);
+    const route = pathname.match(/^\/api\/t\/([^/]+)(?:\/(ws|admin|takeover|push|admin-push))?$/);
     if (route && ID_PATTERN.test(route[1])) return stub(env, route[1]).fetch(request);
 
     return pathname.startsWith('/api/') ? fail('not_found', 404) : new Response('Bulunamadı', { status: 404 });
@@ -130,10 +137,22 @@ export class Turnuva extends DurableObject {
   }
 
   async fetch(request) {
+    // Rev kontrolü, kütüphane parçası okuma/yazma ve devir aynı sırada ilerler.
+    // Özellikle özetin eski state ile yeni kütüphane parçalarını birleştirmesini önler.
+    const response = (this.requests || Promise.resolve()).then(() => this.handleRequest(request));
+    this.requests = response.catch(() => {});
+    return response;
+  }
+
+  async handleRequest(request) {
     if (!(await this.ctx.storage.get('tokenHash'))) return fail('not_found', 404);
     const action = new URL(request.url).pathname.split('/')[4] ?? '';
     try {
       if (action === 'ws') return await this.connect(request);
+      if (action === 'admin' && request.method === 'GET') {
+        await this.authorize(request);
+        return json(await this.snapshot({ privateLibrary: true }));
+      }
       if (action === 'takeover' && request.method === 'POST') return await this.takeover(request);
       if (action === 'push' && request.method === 'POST') return await this.subscribe(request);
       if (action === 'push' && request.method === 'DELETE') return await this.unsubscribe(request, PUSH_PREFIX);
@@ -148,17 +167,42 @@ export class Turnuva extends DurableObject {
     }
   }
 
-  async snapshot() {
-    const stored = await this.ctx.storage.get(['rev', 'state', 'clockOffset', 'holder', 'seenAt']);
+  async snapshot({ privateLibrary = false } = {}) {
+    const stored = await this.ctx.storage.get(['rev', 'libraryRev', 'state', 'clockOffset', 'holder', 'seenAt']);
     const serverTime = Date.now();
     return {
       rev: stored.get('rev') ?? 0,
-      state: stored.get('state') ?? null,
+      libraryRev: stored.get('libraryRev') ?? 0,
+      state: privateLibrary ? await this.restoreLibrary(stored.get('state') ?? null) : publicState(stored.get('state')),
       clockOffset: stored.get('clockOffset') ?? 0,
       holder: stored.get('holder') ?? null,
       holderOnline: this.isOnline(stored.get('holder'), stored.get('seenAt'), serverTime),
       serverTime,
     };
+  }
+
+  async restoreLibrary(state) {
+    if (!state?.libraryChunks) return state;
+    const keys = Array.from({ length: state.libraryChunks }, (_, i) => `library:${i}`);
+    const chunks = new Map();
+    for (let offset = 0; offset < keys.length; offset += 64) {
+      for (const [key, value] of await this.ctx.storage.get(keys.slice(offset, offset + 64))) chunks.set(key, value);
+    }
+    const library = JSON.parse(keys.map((key) => chunks.get(key)).join(''));
+    const { libraryChunks, ...current } = state;
+    return { ...current, ...library };
+  }
+
+  libraryEntries(state) {
+    const { playerPool, archives, libraryChunks: ignored, ...current } = state;
+    if (!Array.isArray(playerPool) || !Array.isArray(archives)) return { state: current };
+    // Küçük parçalar: geçmiş büyüse de tek bir depolama kaydına sığmak zorunda değil.
+    const serialized = JSON.stringify({ playerPool, archives });
+    const entries = {};
+    let count = 0;
+    for (let offset = 0; offset < serialized.length; offset += 16000) entries[`library:${count++}`] = serialized.slice(offset, offset + 16000);
+    entries.state = { ...current, libraryChunks: count };
+    return entries;
   }
 
   isOnline(holder, seenAt, now = Date.now()) {
@@ -181,7 +225,8 @@ export class Turnuva extends DurableObject {
   }
 
   broadcast(snapshot) {
-    const message = JSON.stringify({ type: 'state', ...snapshot });
+    // Bu kanal izleyicilerle ortak. Yetkili bir snapshot verilse bile arşiv sızamaz.
+    const message = JSON.stringify({ type: 'state', ...snapshot, state: publicState(snapshot.state) });
     for (const ws of this.ctx.getWebSockets()) {
       try {
         ws.send(message);
@@ -194,10 +239,13 @@ export class Turnuva extends DurableObject {
     return !!token && crypto.subtle.timingSafeEqual(await sha256(token), fromHex(tokenHash));
   }
 
-  async readAdminRequest(request) {
+  async authorize(request) {
     const auth = request.headers.get('authorization') || '';
     if (!(await this.tokenMatches(auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''))) throw new HttpError('unauthorized', 401);
+  }
 
+  async readAdminRequest(request) {
+    await this.authorize(request);
     const body = await readJson(request, MAX_BODY_BYTES);
     if (!body || typeof body !== 'object' || !DEVICE_PATTERN.test(body.device ?? '')) throw new HttpError('bad_request', 400);
     return body;
@@ -217,39 +265,68 @@ export class Turnuva extends DurableObject {
     const changed = before.holder !== device;
     if (changed) await this.ctx.storage.put('holder', device);
     await this.markSeen();
-    const snapshot = await this.snapshot();
+    const snapshot = await this.snapshot({ privateLibrary: true });
     // Yönetimi kaybeden cihaz da bu kanalı dinliyorsa salt okunura hemen geçer.
     if (changed || !before.holderOnline) this.broadcast(snapshot);
     return json(snapshot);
   }
 
   async update(request) {
-    const { device, baseRev, sentAt, state } = await this.readAdminRequest(request);
+    const { device, baseRev, sentAt, state, library, libraryProtocol } = await this.readAdminRequest(request);
     if (!Number.isSafeInteger(baseRev) || baseRev < 0 || !Number.isFinite(sentAt) || !isState(state)) throw new HttpError('bad_request', 400);
+    // Eski istemci, herkese açık snapshot'ı tam arşiv zannedip geri yazmamalı.
+    if (state.version === 2 && (libraryProtocol !== 1 || 'playerPool' in state || 'archives' in state)) throw new HttpError('upgrade_required', 426);
+    if (state.version === 2 && !Tournament.isValidState(state)) throw new HttpError('bad_request', 400);
+    const { playerPool, archives, ...currentState } = state;
+    if (new TextEncoder().encode(JSON.stringify(currentState)).byteLength > 64 * 1024) throw new HttpError('too_large', 413);
 
     // Aynı anda tek yönetici yazabilir; diğerleri önce devralmalı. Yönetimi henüz kimse almadıysa ilk yazan alır.
     const holder = await this.ctx.storage.get('holder');
-    if (holder && holder !== device) throw new HttpError('not_holder', 409, await this.snapshot());
+    if (holder && holder !== device) throw new HttpError('not_holder', 409, await this.snapshot({ privateLibrary: true }));
 
     // Yalnız sunucudaki son sürümün üstüne yapılan değişiklik kabul edilir; internetsiz kalmış
     // ya da devir sırasında geride kalmış bir cihaz başkasının girdiğini ezemez.
     const current = (await this.ctx.storage.get('rev')) ?? 0;
-    if (baseRev !== current) throw new HttpError('stale', 409, await this.snapshot());
+    if (baseRev !== current) throw new HttpError('stale', 409, await this.snapshot({ privateLibrary: true }));
 
     const before = await this.ctx.storage.get('state');
+    if (before?.libraryChunks && state.version !== 2) throw new HttpError('upgrade_required', 426);
+    let libraryRev = (await this.ctx.storage.get('libraryRev')) ?? 0;
+    let entries = { state: { ...publicState(state), ...(before?.libraryChunks ? { libraryChunks: before.libraryChunks } : {}) } };
+    if (library !== undefined) {
+      if (state.version !== 2 || !library || typeof library !== 'object' ||
+        (library.playerPool !== undefined && !Array.isArray(library.playerPool)) ||
+        !Array.isArray(library.upsertArchives) || !Array.isArray(library.deleteArchiveIds) ||
+        !library.deleteArchiveIds.every((id) => typeof id === 'string') ||
+        !library.upsertArchives.every((t) => t && typeof t.id === 'string') ||
+        (library.replace !== undefined && library.replace !== true)) throw new HttpError('bad_request', 400);
+      const previous = await this.restoreLibrary(before);
+      const records = new Map((library.replace ? [] : previous?.archives || []).map((t) => [t.id, t]));
+      for (const id of library.deleteArchiveIds) records.delete(id);
+      for (const t of library.upsertArchives) records.set(t.id, t);
+      const merged = { ...publicState(state), playerPool: library.playerPool ?? previous?.playerPool ?? [], archives: [...records.values()] };
+      if (!Tournament.isValidState(merged)) throw new HttpError('bad_request', 400);
+      const fingerprint = toHex(await sha256(JSON.stringify({ playerPool: merged.playerPool, archives: merged.archives })));
+      if (fingerprint !== await this.ctx.storage.get('libraryHash')) {
+        entries = { ...this.libraryEntries(merged), libraryHash: fingerprint, libraryRev: ++libraryRev };
+      }
+    }
     const notices = [...goalNotices(before, state), ...resultNotices(before, state)];
     const rev = current + 1;
     const serverTime = Date.now();
     // Organizatör saatiyle sunucu saati arasındaki fark; izleyici kalan süreyi bununla düzeltir.
     const clockOffset = serverTime - sentAt;
     const due = await this.takeDueAlert(serverTime);
-    await this.ctx.storage.put({ rev, state, clockOffset, holder: device, updatedAt: serverTime });
+    const values = Object.entries({ rev, ...entries, clockOffset, holder: device, updatedAt: serverTime });
+    await this.ctx.storage.transaction(async (txn) => {
+      for (let offset = 0; offset < values.length; offset += 64) await txn.put(Object.fromEntries(values.slice(offset, offset + 64)));
+    });
     await this.planAlerts(state, clockOffset, serverTime);
     await this.markSeen(serverTime);
-    this.broadcast({ rev, state, clockOffset, holder: device, holderOnline: true, serverTime });
+    this.broadcast({ rev, libraryRev, state, clockOffset, holder: device, holderOnline: true, serverTime });
     if (notices.length && this.env.VAPID_KEY) this.ctx.waitUntil(this.notify(notices, request.url));
     if (due) this.ctx.waitUntil(this.sendAlert(due));
-    return json({ rev, serverTime });
+    return json({ rev, libraryRev, serverTime });
   }
 
   // Duraklatma ve maç bitişi her gönderimde gelir; uyarılar her seferinde baştan hesaplanır.

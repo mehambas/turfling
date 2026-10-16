@@ -19,7 +19,7 @@ after(async () => {
   await worker?.dispose();
 });
 
-function device(initial = sampleState()) {
+function device(initial = sampleState(), { storage = memoryStorage() } = {}) {
   const d = {
     state: initial,
     offline: false,
@@ -27,9 +27,11 @@ function device(initial = sampleState()) {
     notices: [],
     adopted: 0,
     statuses: [],
+    requests: [],
   };
   const fetchImpl = async (...args) => {
     if (d.offline) throw new TypeError('fetch failed');
+    d.requests.push({ path: new URL(args[0]).pathname, method: args[1]?.method, body: args[1]?.body ? JSON.parse(args[1].body) : null });
     const res = await fetch(...args);
     if (d.loseResponses) throw new TypeError('fetch failed');
     return res;
@@ -42,7 +44,7 @@ function device(initial = sampleState()) {
     },
     onNotice: (n) => d.notices.push(n),
     onChange: (s) => d.statuses.push(s),
-    storage: memoryStorage(),
+    storage,
     fetchImpl,
     origin: base,
     debounceMs: 10,
@@ -239,4 +241,108 @@ describe('aynı anda tek yönetici', () => {
     await new Promise((r) => setTimeout(r, 100));
     assert.equal((await server(id)).state.name, 'Test');
   });
+});
+
+const withLibrary = () => sampleState({ version: 2, id: 'current', playerPool: [{ id: 'p1', name: 'Ali' }, { id: 'p2', name: 'Geçmiş oyuncu' }], archives: [sampleState({ id: 'old', name: 'Önceki turnuva' })] });
+
+describe('kütüphane senkronizasyonu', () => {
+  test('gol/saat güncellemeleri arşiv taşımaz; değişiklik yalnız ilgili kaydı taşır', async () => {
+    const a = device(withLibrary());
+    await a.sync.start(); await synced(a);
+    const first = a.requests.find((r) => r.method === 'PUT').body;
+    assert.equal('archives' in first.state, false);
+    assert.equal('playerPool' in first.state, false);
+    assert.equal(first.library.upsertArchives.length, 1);
+    a.requests = [];
+    a.change((s) => { s.name = 'Skor güncellemesi'; });
+    await synced(a);
+    assert.ok(a.requests.filter((r) => r.method === 'PUT').every((r) => !('library' in r.body)));
+    a.requests = [];
+    a.change((s) => s.archives.push(sampleState({ id: 'second', name: 'İkinci turnuva' })));
+    await synced(a);
+    const patch = a.requests.find((r) => r.method === 'PUT').body.library;
+    assert.deepEqual(patch.upsertArchives.map((t) => t.id), ['second']);
+    assert.equal('playerPool' in patch, false);
+    a.requests = [];
+    a.change((s) => { s.playerPool[1].name = 'Yeni ad'; }); await synced(a);
+    const poolPatch = a.requests.find((r) => r.method === 'PUT').body.library;
+    assert.equal(poolPatch.upsertArchives.length, 0);
+    assert.equal(poolPatch.playerPool[1].name, 'Yeni ad');
+  });
+
+  test('diğer yönetici özel arşivi alır, sıradan yayın mesajları arşivi silmez', async () => {
+    const a = device(withLibrary());
+    await a.sync.start(); await synced(a);
+    const { id, token } = a.sync.config;
+    const b = device(); b.sync.join(id, token);
+    await waitFor(() => b.state.archives?.length === 1, 'B özel arşivi alsın');
+    assert.equal(b.state.playerPool.length, 2);
+    assert.ok(b.requests.some((r) => r.path.endsWith('/admin')));
+    const reads = b.requests.filter((r) => r.path.endsWith('/admin')).length;
+    a.change((s) => { s.name = 'Yeni skor'; }); await synced(a);
+    await waitFor(() => b.state.name === 'Yeni skor', 'B canlı değişikliği alsın');
+    assert.equal(b.state.archives[0].name, 'Önceki turnuva');
+    assert.equal(b.requests.filter((r) => r.path.endsWith('/admin')).length, reads);
+    a.change((s) => { s.archives[0].name = 'Arşiv düzeltmesi'; }); await synced(a);
+    await waitFor(() => b.state.archives[0].name === 'Arşiv düzeltmesi', 'B arşiv değişikliğini alsın');
+    await b.sync.takeover();
+    await waitFor(() => a.sync.status().mode === 'follower', 'A devri alsın');
+    b.change((s) => { s.name = 'B skoru'; }); await synced(b);
+    await waitFor(() => a.state.name === 'B skoru', 'A yeni skoru alsın');
+    assert.equal(a.state.archives[0].name, 'Arşiv düzeltmesi');
+    assert.ok(b.requests.filter((r) => r.method === 'PUT').every((r) => !r.body.library));
+  });
+
+  test('kayıp kütüphane cevabı ve çevrimdışı arşiv değişiklikleri tekrarlandığında kaybolmaz', async () => {
+    const a = device(withLibrary()); await a.sync.start(); await synced(a);
+    a.loseResponses = true;
+    a.change((s) => s.archives.push(sampleState({ id: 'second' })));
+    await waitFor(async () => (await server(a.sync.config.id)).rev === 2, 'sunucu arşivi alsın');
+    a.loseResponses = false;
+    a.change((s) => { s.archives[0].name = 'Son değişiklik'; });
+    await synced(a);
+    const b = device(); b.sync.join(a.sync.config.id, a.sync.config.token);
+    await waitFor(() => b.state.archives?.length === 2, 'iki turnuva da korunsun');
+    assert.equal(b.state.archives[0].name, 'Son değişiklik');
+  });
+
+  test('yanlış anahtar özel arşivi alamaz', async () => {
+    const a = device(withLibrary()); await a.sync.start(); await synced(a);
+    const b = device(); b.sync.join(a.sync.config.id, 'wrong-token');
+    await waitFor(() => b.sync.status().mode === 'error', 'yetki hatası');
+    assert.equal(b.sync.status().error, 'unauthorized');
+    assert.equal(b.state.archives, undefined);
+  });
+});
+
+test('büyük ilk arşiv aktarımı küçük isteklerle tamamlanır; sonra canlı skor küçüktür', async () => {
+  const state = withLibrary();
+  state.archives = Array.from({ length: 170 }, (_, i) => sampleState({ id: `old-${i}`, name: 'Turnuva'.repeat(1100) }));
+  assert.ok(JSON.stringify(state.archives).length > 1024 * 1024);
+  const a = device(state); await a.sync.start(); await synced(a);
+  const puts = a.requests.filter((r) => r.method === 'PUT');
+  assert.ok(puts.length > 1);
+  for (const request of puts) assert.ok(Buffer.byteLength(JSON.stringify(request.body)) < 1024 * 1024);
+  const res = await fetch(`${base}/api/t/${a.sync.config.id}/admin`, { headers: { authorization: `Bearer ${a.sync.config.token}` } });
+  assert.equal((await res.json()).state.archives.length, 170);
+  a.requests = [];
+  a.change((s) => { s.name = 'Canlı güncelleme'; }); await synced(a);
+  const next = a.requests.find((r) => r.method === 'PUT');
+  assert.equal(next.body.library, undefined);
+  assert.ok(Buffer.byteLength(JSON.stringify(next.body)) < 2000);
+});
+
+test('sayfa yeniden açıldığında bekleyen skor, arşiv tekrar gönderilmeden eşitlenir', async () => {
+  const a = device(withLibrary()); await a.sync.start(); await synced(a);
+  const cfg = { ...a.sync.config, pending: 1 };
+  const state = structuredClone(a.state); state.name = 'Yeniden açılan cihaz';
+  a.sync.stop();
+  const storage = memoryStorage(); storage.setItem(LiveSync.CONFIG_KEY, JSON.stringify(cfg));
+  const b = device(state, { storage }); await synced(b);
+  assert.equal(b.state.archives.length, 1);
+  assert.ok(b.requests.some((r) => r.path.endsWith('/admin')));
+  const puts = b.requests.filter((r) => r.method === 'PUT');
+  assert.ok(puts.length > 0);
+  assert.ok(puts.every((r) => !r.body.library));
+  assert.equal((await server(cfg.id)).state.name, 'Yeniden açılan cihaz');
 });

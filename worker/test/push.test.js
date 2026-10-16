@@ -191,3 +191,11 @@ describe('maç sonu bildirimleri', () => {
     assert.deepEqual(resultNotices(before, after), [{ title: 'Maç bitti', body: 'Kırmızılar 0–0 Z' }]);
   });
 });
+
+test('yeni turnuvada tekrarlanan maç kimlikleri eski turnuvanın bildirimi sayılmaz', () => {
+  const before = sampleState({ id: 'old-tournament', matches: [{ id: 'L1', status: 'live', home: 'A', away: 'B', goals: [] }] });
+  const after = sampleState({ id: 'new-tournament', matches: [{ id: 'L1', status: 'done', home: 'A', away: 'B', goals: [{ id: 'g-new', team: 'A', playerId: 'p1' }] }] });
+  assert.deepEqual(resultNotices(before, after), []);
+  after.matches[0].status = 'live';
+  assert.deepEqual(goalNotices(before, after), []);
+});

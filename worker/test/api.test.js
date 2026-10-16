@@ -37,8 +37,15 @@ async function createTournament() {
   return res.data;
 }
 
-const put = (t, { device = DEVICE_A, baseRev, sentAt = Date.now(), state = sampleState(), token = t.adminToken } = {}) =>
-  api(`/api/t/${t.id}`, { method: 'PUT', token, body: { device, baseRev, sentAt, state } });
+const put = (t, { device = DEVICE_A, baseRev, sentAt = Date.now(), state = sampleState(), token = t.adminToken, library } = {}) => {
+  const { playerPool, archives, ...current } = state;
+  return api(`/api/t/${t.id}`, { method: 'PUT', token, body: {
+    device, baseRev, sentAt, state: current, libraryProtocol: 1,
+    ...(library ? { library } : playerPool && archives ? { library: { replace: true, playerPool, upsertArchives: archives, deleteArchiveIds: [] } } : {}),
+  } });
+};
+
+const privateSnapshot = (t) => api(`/api/t/${t.id}/admin`, { token: t.adminToken });
 
 const takeover = (t, device, token = t.adminToken) => api(`/api/t/${t.id}/takeover`, { method: 'POST', token, body: { device } });
 
@@ -275,7 +282,7 @@ describe('statik dosyalar', () => {
   });
 
   test('worker, testler ve depo dosyaları sunulmaz', async () => {
-    for (const path of ['/worker/src/index.js', '/worker/wrangler.toml', '/tests/tournament.test.js', '/README.md', '/.git/config', '/.gitignore', '/.assetsignore']) {
+    for (const path of ['/worker/src/index.js', '/worker/wrangler.toml', '/tests/tournament.test.js', '/README.md', '/.git/config', '/.gitignore', '/.assetsignore', '/.wrangler/cache/cf.json', '/docs/yayin-oncesi.md']) {
       assert.equal((await fetch(base + path)).status, 404, path);
     }
   });
@@ -287,5 +294,95 @@ describe('gol bildirimi anahtarsız', () => {
     const t = await createTournament();
     const res = await api(`/api/t/${t.id}/push`, { method: 'POST', body: { endpoint: 'https://web.push.apple.com/x', keys: {} } });
     assert.deepEqual([res.status, res.data.error], [404, 'push_disabled']);
+  });
+});
+
+describe('turnuva arşivi', () => {
+  test('büyük arşiv ve oyuncu havuzu kayıpsız saklanır, GET ve devirde geri gelir', async () => {
+    const t = await createTournament();
+    const state = sampleState({ version: 2, id: 't-current', playerPool: [{ id: 'p1', name: 'Ali' }], archives: Array.from({ length: 25 }, (_, i) => sampleState({ id: `old-${i}`, name: 'İlk turnuva'.repeat(600) })) });
+    assert.ok(JSON.stringify(state).length > 128 * 1024);
+    assert.equal((await put(t, { baseRev: 0, state })).status, 200);
+    assert.deepEqual((await privateSnapshot(t)).data.state, state);
+    assert.deepEqual((await takeover(t, DEVICE_B)).data.state, state);
+    const smaller = { ...state, archives: state.archives.slice(0, 1) };
+    assert.equal((await put(t, { device: DEVICE_B, baseRev: 1, state: smaller })).status, 200);
+    assert.deepEqual((await privateSnapshot(t)).data.state, smaller);
+  });
+
+  test('eski uygulama sürümü arşivi sessizce silemez', async () => {
+    const t = await createTournament();
+    const state = sampleState({ version: 2, id: 't-new', playerPool: [], archives: [sampleState({ id: 't-old' })] });
+    assert.equal((await put(t, { baseRev: 0, state })).status, 200);
+    const res = await put(t, { baseRev: 1 });
+    assert.equal(res.status, 426);
+    assert.equal(res.data.error, 'upgrade_required');
+    assert.deepEqual((await privateSnapshot(t)).data.state, state);
+  });
+});
+
+describe('özel arşiv ve küçük güncellemeler', () => {
+  test('kimliksiz GET, ilk WS, güncelleme ve devir yayınında kütüphane yoktur', async () => {
+    const t = await createTournament();
+    const state = sampleState({ version: 2, id: 'current', playerPool: [{ id: 'private', name: 'Yalnız havuzda' }], archives: [sampleState({ id: 'archived', name: 'Özel geçmiş' })] });
+    await put(t, { baseRev: 0, state });
+    const check = (snapshot) => {
+      for (const key of ['playerPool', 'archives', 'libraryChunks']) assert.equal(key in snapshot.state, false, key);
+      assert.ok(!JSON.stringify(snapshot).includes('Özel geçmiş'));
+      assert.ok(!JSON.stringify(snapshot).includes('Yalnız havuzda'));
+    };
+    check((await api(`/api/t/${t.id}`)).data);
+    assert.equal((await api(`/api/t/${t.id}/admin`)).status, 401);
+    assert.equal((await api(`/api/t/${t.id}/admin`, { token: 'wrong' })).status, 401);
+    assert.deepEqual((await privateSnapshot(t)).data.state, state);
+    const { ws, next, opened } = openSocket(t.id);
+    try {
+      await opened;
+      check(JSON.parse(await next()));
+      const { playerPool, archives, ...current } = state;
+      assert.equal((await put(t, { baseRev: 1, state: { ...current, name: 'Canlı skor' } })).status, 200);
+      check(JSON.parse(await next()));
+      await takeover(t, DEVICE_B);
+      check(JSON.parse(await next()));
+      assert.deepEqual((await privateSnapshot(t)).data.state.archives, archives);
+    } finally { ws.close(); }
+  });
+
+  test('1 MiB üzerinde arşiv birikir; canlı güncelleme kütüphaneyi değiştirmez', async () => {
+    const t = await createTournament();
+    const state = sampleState({ version: 2, id: 'current' });
+    for (let batch = 0; batch < 8; batch++) {
+      const library = {
+        playerPool: state.players,
+        upsertArchives: Array.from({ length: 25 }, (_, i) => sampleState({ id: `old-${batch * 25 + i}`, name: 'Turnuva'.repeat(1100) })),
+        deleteArchiveIds: [],
+      };
+      assert.equal((await put(t, { baseRev: batch, state, library })).status, 200);
+    }
+    const before = (await privateSnapshot(t)).data;
+    assert.ok(JSON.stringify(before.state.archives).length > 1024 * 1024);
+    const res = await put(t, { baseRev: 8, state: { ...state, name: 'Gol güncellemesi' } });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.libraryRev, before.libraryRev);
+    const after = (await privateSnapshot(t)).data;
+    assert.deepEqual(after.state.archives, before.state.archives);
+    const corrected = { ...before.state.archives[0], name: 'Düzeltilen turnuva' };
+    const patch = { upsertArchives: [corrected], deleteArchiveIds: ['old-1'] };
+    assert.equal((await put(t, { baseRev: 9, state, library: patch })).status, 200);
+    const updated = (await privateSnapshot(t)).data;
+    assert.equal(updated.state.archives.length, 199);
+    assert.equal(updated.state.archives[0].name, 'Düzeltilen turnuva');
+    assert.equal(updated.libraryRev, before.libraryRev + 1);
+    const retry = await put(t, { baseRev: 10, state, library: patch });
+    assert.equal(retry.data.libraryRev, updated.libraryRev, 'aynı kütüphane yeniden yazılmaz');
+  });
+
+  test('eski toplu arşiv protokolü yenileme ister; bozuk yama kayıt değiştirmez', async () => {
+    const t = await createTournament();
+    const state = sampleState({ version: 2, id: 'current', playerPool: [], archives: [] });
+    const res = await api(`/api/t/${t.id}`, { method: 'PUT', token: t.adminToken, body: { device: DEVICE_A, baseRev: 0, sentAt: Date.now(), state } });
+    assert.equal(res.status, 426);
+    assert.equal((await put(t, { baseRev: 0, state, library: { upsertArchives: [null], deleteArchiveIds: [] } })).status, 400);
+    assert.equal((await api(`/api/t/${t.id}`)).data.rev, 0);
   });
 });

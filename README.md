@@ -1,12 +1,30 @@
 # Halı Saha Turnuvası
 
-15 kişi, 3 takım için turnuva takip ekranı: kura, canlı skor ve süre, puan durumu, fikstür, gol krallığı, zaman planı.
+3 takım için turnuva takip ekranı: oyuncu havuzu, torbalı kura, canlı skor ve süre, puan durumu, fikstür, gol krallığı, turnuva arşivi ve kişisel istatistikler.
 Build adımı yok; düz HTML/CSS/JS.
 
 ## Çalıştırma
 
 `index.html` dosyasına çift tıklamak yeterli. İnternet gerekmez; veriler tarayıcıda (localStorage) saklanır.
 Sayfa kapanıp açılsa da kaldığı yerden devam eder. Turnuva öncesinde ve sonrasında *Kurulum → Yedek → İndir* önerilir.
+
+## Oyuncu havuzu ve yeni turnuva
+
+Oyuncuların kimlikleri kalıcıdır; takım üyeliği her turnuvaya aittir. *Kurulum → Oyuncu havuzundan seç* bölümünden o gün katılacakları ekleyin, yeni kişileri isim alanından oluşturun. Katılmayan kişiyi listeden çıkarmak havuzu ve geçmişini silmez. Aynı isimde farklı kişiler ayrı kaydedilebilir; ayırt etmek için soyadı veya lakap eklenebilir. Yanlışlıkla iki kez oluşturulan kişi, profilindeki *Mükerrer kaydı birleştir* ile tek kimliğe taşınabilir. Önce yedek indirilir; aynı turnuvada farklı takımlarda veya aynı maçta rakip görünen kayıtlar birleştirilmez.
+
+Katılımcıları seçtikten sonra torbaları belirleyip kurayı çekin. **K** işareti kaleciyi belirtir. Kura, torba ve kişi sayısı dengesini koruyan 301 aday arasından önce kalecileri daha dengeli dağıtan, sonra geçmişte aynı takımda bulunma tekrarını azaltan seçeneği alır. Yakın turnuvalara daha fazla ağırlık verir; gol ve galibiyet sayısını otomatik oyuncu gücü saymaz. Bu bir aday aramasıdır; matematiksel olarak en iyi dağılım garantisi vermez.
+
+Turnuva tamamlanınca *Geçmiş → Arşivle* kullanılabilir. *Yeni turnuva* da tamamlanan turnuvayı arşivler, mevcut verilerin JSON yedeğini indirmeyi başlatır ve boş katılımcı listesi açar. Format ayarları korunur; tarih ve saat temizlenir. Bitmemiş turnuvanın üzerine yeni turnuva açılmaz. Arşivlenmiş turnuvanın sonuçları sıfırlanamaz.
+
+## Maç kadroları ve geçmiş
+
+Maç başlatılırken kadro otomatik saklanır; ayrıca onay gerekmez. Fikstürdeki veya canlı maçtaki *Kadro* düğmesiyle sadece o maçın istisnaları değiştirilebilir. Oyuncu maçın bir bölümünde bile oynadıysa kadroda tutulur. Bu sürüm süre/dakika bazında oyuncu değişikliği ve aynı maçta iki tarafta oynama takibi yapmaz.
+
+*Geçmiş* sekmesinde turnuvalar, toplam maç ve goller, oyuncuların maç/G/B/M/gol sayıları bulunur. Oyuncuya dokununca birlikte ve rakip olarak oynadığı kişiler, karşılıklı sonuçlar ve katıldığı turnuvalar görünür. İstatistikler arşivlerle mevcut turnuvanın biten maçlarından hesaplanır; aynı turnuva iki kez sayılmaz. Katılım sayısı turnuvanın katılımcı listesini, maç sayısı maç kadrosunu esas alır. G/B/M normal süre sonucudur; penaltıyla kazanılan maçlar profilde ayrıca gösterilir. Seri penaltılar gol toplamına girmez; kendi kalesine ve sahibi bilinmeyen goller ayrı tutulur.
+
+Arşivdeki *Kadro / düzeltme* ile gol, gol sahibi, penaltı sonucu ve maç kadrosu düzenlenir. *Kaydet* uygulanana kadar kayıt değişmez. Oynanmış bir eleme eşleşmesini geçersiz kılan skor düzeltmesi reddedilir. Eski sürümün yedeği kimlik ve goller korunarak dönüştürülür; maç kadroları turnuva kadrosundan alınır ve varsayım olarak işaretlenir. İlk yerel sürümün ham kaydı, alan varsa `halisaha-turnuva-ilk-yedek` anahtarında da korunur.
+
+Yedek indirme/yükleme oyuncu havuzunu ve tüm arşivi kapsar. Yükleme mevcut koleksiyonun yerine geçer; değiştirmeden önce mevcut koleksiyonun yedeği indirilmeye çalışılır.
 
 ## Yayın ekranı (TV / projektör)
 
@@ -52,8 +70,13 @@ node --test tests/*.test.js
 
 Statik site olduğu için Cloudflare Pages'e klasör olduğu gibi yüklenebilir
 (dashboard'dan sürükle-bırak ya da `npx wrangler pages deploy .`).
-Not: Veriler her cihazın kendi tarayıcısında tutulur; yayınlanan sürümde herkes kendi kopyasını görür.
-Herkesin aynı canlı skoru görmesi için ortak bir veri katmanı eklemek gerekir.
+Yalnız statik barındırmada veriler her cihazın tarayıcısında tutulur. Ortak canlı yayın ve sunucuda kalıcı kayıt için `worker/` içindeki Worker kullanılır. *Kurulum → Canlı yayın → Yayını başlat* ile mevcut koleksiyon sunucuya gönderilir; aynı yönetici bağlantısından başka cihazda açılabilir. Yeni turnuvalar aynı bağlantı altında devam eder. Bağlantı yokken değişiklikler tarayıcıda kalır; bağlantı gelince mevcut sürüm/tek yönetici kurallarıyla senkronize edilir.
+
+Sunucu mevcut turnuvayı ve arşivi ayrı depolama kayıtlarında tutar. Kimliksiz GET ve WebSocket yalnız mevcut turnuvayı döndürür; oyuncu havuzu ve arşiv yönetici anahtarı isteyen `/api/t/:id/admin` üzerinden alınır. Yönetici, kütüphane sürümü değişmedikçe canlı yayın mesajlarını elindeki kütüphaneyle birleştirir.
+
+Skor/saat PUT istekleri kütüphaneyi içermez. Oyuncu havuzu değiştiğinde havuz; arşiv değiştiğinde yalnız eklenen/düzeltilen kayıtlar ve silinen kayıt kimlikleri `library` alanında gönderilir. Büyük ilk aktarım ve yedek yüklemesi yaklaşık 512 KiB kütüphane gruplarıyla ilerler; tamamlanana kadar bekleyen değişiklik göstergesi açık kalır. Yeniden açılan cihaz önce sunucudaki kütüphaneyi öğrenir. Arşiv büyüklüğü sıradan canlı güncellemenin boyutunu artırmaz.
+
+Kütüphane yalnız değiştiğinde yazılır; tekrar gelen aynı içerik yeniden yazılmaz. Depolama parçaları ve revizyon aynı işlemde kaydedilir. İstek sınırı 1 MiB, mevcut turnuva sınırı 64 KiB'dır. Eski toplu arşiv protokolüyle yazmaya çalışan istemciden sayfayı yenilemesi istenir; arşiv böylece yanlışlıkla silinmez. `.wrangler` ve `docs` statik yayına dahil edilmez. Herkese açılmadan önceki erişim/saklama işleri `docs/yayin-oncesi.md` içinde takip edilir.
 
 ## Gol bildirimi
 
