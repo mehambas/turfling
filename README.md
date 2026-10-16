@@ -1,6 +1,30 @@
+<img src="docs/images/icon.png" width="128" alt="">
+
 # Turfling
 
-A local-first football tournament manager **for three teams**, in English and Turkish. Plain HTML, CSS and JavaScript; no build step. Optional Cloudflare Workers hosting adds live scores, shared administration and push notifications.
+**A small football tournament for three teams, with the live score on every phone.**
+
+[Website](https://hamzabasaran.com/turfling) · [Open Turfling](https://turfling.hamzabasaran.com)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/demo-dark.gif">
+  <img src="docs/images/demo-light.gif" width="960" alt="Turfling during a league match between Blues and Reds: the match clock counts down, a goal for Blues is entered by picking the scorer, the score changes to 1–0 and the standings update, then the fixtures show the live match.">
+</picture>
+
+Turfling runs a tournament night at the pitch: three teams, a league, an optional playoff and a final. One phone keeps the clock and the score, a TV can show the big scoreboard, and everyone else follows on their own phone. It runs in the browser, needs no account and keeps working offline. The interface is in English and Turkish.
+
+To try it, open [turfling.hamzabasaran.com](https://turfling.hamzabasaran.com) and choose **Load sample tournament** in Setup. The sample stays in your browser.
+
+## Features
+
+- **Players and team draw.** Pick who is playing from a permanent player pool or add new players. The draw uses pots, balances goalkeepers and avoids repeating recent teammates; it is a heuristic, not a skill rating.
+- **Match clock and goals.** A countdown clock you can pause, with a beep in the last ten seconds. Goals record the scorer and the minute; own goals and unknown scorers are counted separately.
+- **League, playoff and final.** Six league matches by default (two rounds), then second against third in a playoff and a final. Match lengths, rounds, changeovers and breaks are adjustable, and playoff and final can be switched off.
+- **Standings, fixtures and a time plan.** Points 3/1/0, ties decided by goal difference, goals scored, head-to-head, then penalties or a coin toss. Fixtures show estimated kick-off times, and the plan warns when the tournament would run past the pitch booking.
+- **TV screen.** A big scoreboard for a TV or projector, with the clock, the next match and the fixtures.
+- **Live sharing.** Viewers open a link and follow the score, fixtures, standings and match summaries on their phones, with optional notifications for goals, results and the champion. The organizer can hand over to another device.
+- **History.** Finished tournaments go to an archive with player totals, teammate and opponent history, and corrections.
+- **Backup.** Download and import everything as one JSON file.
 
 ## Run locally
 
@@ -8,17 +32,14 @@ Open `index.html` directly, or serve the repository with a static HTTP server. D
 
 Use **Setup → Backup → Download** (Turkish: Kurulum → Yedek → İndir) to download a JSON backup. Backups include the current tournament, permanent player pool and every archive. Import replaces the local collection after attempting to download a backup of existing data.
 
-## Features
+## Details
 
 - Permanent player identities, attendance selection from the player pool and new-player entry. Teams belong to individual tournaments.
-- Pot-based draws compare 301 candidates, prioritising goalkeeper balance and then reducing repeated teammates. Recent tournaments carry more weight. This is a heuristic, not a guaranteed optimum or an automatic skill rating.
-- League, optional playoff and final; configurable match lengths, rounds and breaks; standings, scorers, summaries and penalties.
+- Pot-based draws compare 301 candidates, prioritising goalkeeper balance and then reducing repeated teammates. Recent tournaments carry more weight.
 - Automatic match lineups with optional exceptions. Participation is counted per match, not by minutes played.
 - Archives, player totals, teammate/opponent history and corrections with explicit save/cancel. Normal-time results, shootouts, own goals and unattributed goals are counted separately.
 - **New tournament** (Yeni turnuva) archives a completed tournament, preserves the pool/history and clears attendance. Duplicate identities can be merged unless their match/team histories conflict. Legacy backups migrate without losing goals or identities.
-- TV/projector view, mobile viewer page, optional goal/result and timer notifications.
-
-The default format has six league matches (two rounds), a second-versus-third playoff and a final. League points are 3/1/0; ties use goal difference, goals scored, head-to-head results, then an explicit decision. Playoff and final can be disabled. Space pauses/resumes the live clock; Escape dismisses open panels.
+- Space pauses/resumes the live clock; Escape dismisses open panels.
 
 ## Language
 
@@ -56,7 +77,7 @@ For a separate staging namespace:
 npx wrangler deploy --name hali-saha-test
 ```
 
-Links use the current origin. No custom domain is configured yet. Keep the existing workers.dev hostname when adding a portfolio hostname, so existing browser records remain accessible.
+Links use the current origin. `turfling.hamzabasaran.com` is attached to the same Worker as a Custom Domain, next to the original workers.dev hostname, so existing browser records there remain accessible.
 
 ### Push notifications
 
@@ -76,7 +97,7 @@ For development, place a generated VAPID JSON value in the ignored `worker/.dev.
 - Retention uses the approved 365 days after the last actual content change. Creation starts the clock for empty records. Reads, heartbeats, takeovers and identical writes do not extend it. An alarm handles expiry alongside timer/presence alarms; expired records also reject access. `RETENTION_MS` supports isolated short-duration tests.
 - Legacy objects receive a full grace period when first awakened after the upgrade. Dormant objects with no alarm and no subsequent traffic require a separate inventory/migration before claiming a universal legacy cleanup deadline.
 
-Turkish and English privacy information is in `privacy.html`, linked from both interfaces together with the operator's Impressum. Release decisions are tracked in `docs/yayin-oncesi.md` (not served publicly).
+Turkish and English privacy information is in `privacy.html`, linked from both interfaces together with the operator's Impressum.
 
 ## Portfolio demo
 
