@@ -108,6 +108,7 @@
   function connect() {
     chan = LiveSync.channel(`${location.origin.replace(/^http/, 'ws')}/api/t/${id}/ws`, {
       onMessage(msg, receivedAt) {
+        if (msg.type === 'deleted') return notFound();
         heard = true;
         adopt(msg, receivedAt);
       },

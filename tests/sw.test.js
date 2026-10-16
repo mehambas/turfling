@@ -12,7 +12,7 @@ const ASSETS = vm.runInNewContext(`${read('sw.js')}\nASSETS`, {
   URL,
 });
 
-const PAGES = { '/': 'index.html', '/izle': 'izle.html' };
+const PAGES = { '/': 'index.html', '/izle': 'izle.html', '/privacy': 'privacy.html' };
 
 test('önbellek listesindeki her dosya projede var', () => {
   for (const asset of ASSETS) {
@@ -23,8 +23,11 @@ test('önbellek listesindeki her dosya projede var', () => {
 
 for (const file of Object.values(PAGES)) {
   test(`${file} sayfasının yüklediği her dosya önbellek listesinde`, () => {
-    const refs = [...read(file).matchAll(/(?:src|href)="([^"#:]+)"/g)].map((m) => `/${m[1]}`);
-    assert.ok(refs.length >= 5, refs.join(', '));
+    const refs = [...read(file).matchAll(/(?:src|href)="([^"#:]+)"/g)].map((m) => {
+      const ref = m[1].startsWith('/') ? m[1] : `/${m[1]}`;
+      return Object.keys(PAGES).find((key) => `/${PAGES[key]}` === ref) || ref;
+    });
+    assert.ok(refs.length >= 2, refs.join(', '));
     for (const ref of refs) assert.ok(ASSETS.includes(ref), `${ref} sw.js listesinde yok`);
   });
 }

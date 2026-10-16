@@ -109,6 +109,13 @@ export default {
 
     if (pathname === '/api/t') {
       if (request.method !== 'POST') return fail('method_not_allowed', 405);
+      // Anonim oluşturma için Cloudflare'in doğruladığı IP; istemci başlıkları kullanılmaz.
+      const key = `${new URL(request.url).hostname}:${request.headers.get('cf-connecting-ip') || 'unknown'}`;
+      if (!env.CREATE_LIMITER || !(await env.CREATE_LIMITER.limit({ key })).success) {
+        const response = fail('rate_limited', 429, { retryAfter: 60 });
+        response.headers.set('retry-after', '60');
+        return response;
+      }
       const id = randomId();
       const adminToken = randomToken();
       if (!(await stub(env, id).init(toHex(await sha256(adminToken))))) return fail('conflict', 409);
@@ -128,24 +135,38 @@ export class Turnuva extends DurableObject {
     // İzleyiciler bağlantıyı canlı tutmak için "ping" gönderir; cevap DO'yu uyandırmadan verilir.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.presenceMs = Number(env.PRESENCE_MS) || PRESENCE_MS;
+    this.retentionMs = Number(env.RETENTION_MS) || 365 * 24 * 60 * 60 * 1000;
+    ctx.blockConcurrencyWhile(async () => {
+      if (await ctx.storage.get('tokenHash')) {
+        // Older records receive a full retention period when first awakened after migration.
+        if (!(await ctx.storage.get('changedAt'))) await ctx.storage.put('changedAt', Date.now());
+        await this.armAlarm();
+      }
+    });
   }
 
   async init(tokenHash) {
     if (await this.ctx.storage.get('tokenHash')) return false;
-    await this.ctx.storage.put({ tokenHash, rev: 0, state: null, clockOffset: 0, holder: null, createdAt: Date.now() });
+    await this.ctx.storage.put({ tokenHash, rev: 0, state: null, clockOffset: 0, holder: null, createdAt: Date.now(), changedAt: Date.now() });
+    await this.armAlarm();
     return true;
   }
 
   async fetch(request) {
     // Rev kontrolü, kütüphane parçası okuma/yazma ve devir aynı sırada ilerler.
     // Özellikle özetin eski state ile yeni kütüphane parçalarını birleştirmesini önler.
-    const response = (this.requests || Promise.resolve()).then(() => this.handleRequest(request));
+    return this.enqueue(() => this.handleRequest(request));
+  }
+
+  enqueue(task) {
+    const response = (this.requests || Promise.resolve()).then(task);
     this.requests = response.catch(() => {});
     return response;
   }
 
   async handleRequest(request) {
     if (!(await this.ctx.storage.get('tokenHash'))) return fail('not_found', 404);
+    if (await this.expired()) { await this.erase(); return fail('not_found', 404); }
     const action = new URL(request.url).pathname.split('/')[4] ?? '';
     try {
       if (action === 'ws') return await this.connect(request);
@@ -160,6 +181,11 @@ export class Turnuva extends DurableObject {
       if (action === 'admin-push' && request.method === 'DELETE') return await this.unsubscribe(request, ADMIN_PUSH_PREFIX);
       if (action === '' && request.method === 'GET') return json(await this.snapshot());
       if (action === '' && request.method === 'PUT') return await this.update(request);
+      if (action === '' && request.method === 'DELETE') {
+        await this.authorize(request);
+        await this.erase();
+        return json({ deleted: true });
+      }
       return fail('method_not_allowed', 405);
     } catch (err) {
       if (err instanceof HttpError) return fail(err.message, err.status, err.extra);
@@ -217,8 +243,9 @@ export class Turnuva extends DurableObject {
 
   // Tek alarm hem yönetici cihazının haberini hem süre uyarılarını bekler.
   async armAlarm(now = Date.now()) {
-    const stored = await this.ctx.storage.get(['seenAt', 'alerts']);
+    const stored = await this.ctx.storage.get(['seenAt', 'alerts', 'changedAt']);
     const times = (stored.get('alerts') ?? []).map((a) => a.at);
+    if (stored.has('changedAt')) times.push(stored.get('changedAt') + this.retentionMs);
     const presenceAt = (stored.get('seenAt') ?? -Infinity) + this.presenceMs;
     if (presenceAt > now) times.push(presenceAt);
     if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
@@ -236,7 +263,23 @@ export class Turnuva extends DurableObject {
 
   async tokenMatches(token) {
     const tokenHash = await this.ctx.storage.get('tokenHash');
-    return !!token && crypto.subtle.timingSafeEqual(await sha256(token), fromHex(tokenHash));
+    return !!tokenHash && !!token && crypto.subtle.timingSafeEqual(await sha256(token), fromHex(tokenHash));
+  }
+
+  async erase() {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(JSON.stringify({ type: 'deleted' }));
+        ws.close(1000, 'deleted');
+      } catch {}
+    }
+  }
+
+  async expired(now = Date.now()) {
+    const changedAt = await this.ctx.storage.get('changedAt');
+    return changedAt != null && changedAt + this.retentionMs <= now;
   }
 
   async authorize(request) {
@@ -314,10 +357,13 @@ export class Turnuva extends DurableObject {
     const notices = [...goalNotices(before, state), ...resultNotices(before, state)];
     const rev = current + 1;
     const serverTime = Date.now();
+    const contentHash = toHex(await sha256(JSON.stringify({ state: publicState(state), libraryHash: entries.libraryHash ?? await this.ctx.storage.get('libraryHash') })));
+    const changed = contentHash !== await this.ctx.storage.get('contentHash');
     // Organizatör saatiyle sunucu saati arasındaki fark; izleyici kalan süreyi bununla düzeltir.
     const clockOffset = serverTime - sentAt;
     const due = await this.takeDueAlert(serverTime);
-    const values = Object.entries({ rev, ...entries, clockOffset, holder: device, updatedAt: serverTime });
+    const values = Object.entries({ rev, ...entries, clockOffset, holder: device, updatedAt: serverTime,
+      ...(changed ? { contentHash, changedAt: serverTime } : {}) });
     await this.ctx.storage.transaction(async (txn) => {
       for (let offset = 0; offset < values.length; offset += 64) await txn.put(Object.fromEntries(values.slice(offset, offset + 64)));
     });
@@ -409,6 +455,12 @@ export class Turnuva extends DurableObject {
   }
 
   async webSocketMessage(ws, message) {
+    return this.enqueue(() => this.handleSocketMessage(ws, message));
+  }
+
+  async handleSocketMessage(ws, message) {
+    if (!(await this.ctx.storage.get('tokenHash'))) return;
+    if (await this.expired()) return this.erase();
     let msg;
     try {
       msg = JSON.parse(message);
@@ -424,7 +476,13 @@ export class Turnuva extends DurableObject {
   }
 
   async alarm() {
+    return this.enqueue(() => this.handleAlarm());
+  }
+
+  async handleAlarm() {
+    if (!(await this.ctx.storage.get('tokenHash'))) return;
     const now = Date.now();
+    if (await this.expired(now)) return this.erase();
     const due = await this.takeDueAlert(now);
     const snapshot = await this.snapshot();
     if (!snapshot.holderOnline) this.broadcast(snapshot);

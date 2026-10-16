@@ -241,6 +241,7 @@
     'live-copy',
     'live-share',
     'live-stop',
+    'live-delete',
     'live-takeover',
     'alerts-toggle',
     'match',
@@ -350,7 +351,9 @@
           <div class="btn-row">${buttons('admin')}</div>
         </div>
         ${renderAlerts()}
-        <div class="sc-foot live-foot"><span>Yeni turnuvalar da aynı linkten yayınlanır.</span><button class="btn btn-sm btn-text-danger" data-action="live-stop">Bu cihazda kapat</button></div>`;
+        <div class="sc-foot live-foot"><span>Yeni turnuvalar da aynı linkten yayınlanır.</span><button class="btn btn-sm btn-text-danger" data-action="live-stop">Bu cihazda kapat</button></div>
+        <p class="sc-hint">Yönetici linkini güvenli bir yerde saklayın; başka cihazdan arşive erişmek için gerekir.</p>
+        <button class="btn btn-sm btn-text-danger" data-action="live-delete">Turnuvayı sil</button>`;
     }
     liveCardHtml = `<section class="card setup-card share-card" id="yayin" aria-labelledby="h-live">${head}${body}</section>`;
     return liveCardHtml;
@@ -859,6 +862,7 @@
         <h1 class="page-title">Kurulum</h1>
         ${state.started ? '' : renderSteps()}
       </div>
+      ${window.TournamentDemo?.available(location) && window.TournamentDemo.canLoad(state, !!live?.config) ? '<section class="card setup-card"><h2 class="card-title">Üç takım için örnek turnuva</h2><p class="sc-hint">15 örnek oyuncu, hazır takımlar ve üç maçın sonuçlarıyla deneyin. Yayını başlatmadıkça veriler bu tarayıcıda kalır.</p><button class="btn btn-sm" data-action="load-demo">Örnek turnuva yükle</button></section>' : ''}
       <div class="setup">
         <div class="setup-side">${renderPlayers()}${renderData()}${renderLiveCard()}</div>
         <div class="setup-main">${renderTeams()}${renderFormat()}</div>
@@ -1987,12 +1991,38 @@
       });
     },
 
+    'load-demo'() {
+      if (!window.TournamentDemo?.available(location) || !window.TournamentDemo.canLoad(state, !!live?.config)) return;
+      state = window.TournamentDemo.create();
+      ui.tab = 'dashboard';
+      saveState({ sync: false });
+      render();
+      toast('Örnek turnuva bu tarayıcıya yüklendi.', 'ok');
+    },
+
     async 'live-start'() {
       try {
         await live.start();
         toast('Yayın başladı. İzleyici linkini paylaşabilirsin.', 'ok');
+      } catch (err) {
+        toast(err.message === 'rate_limited' ? 'Bu bağlantıdan kısa sürede çok fazla yayın açıldı. Bir dakika sonra tekrar deneyin.' : 'Yayın başlatılamadı. İnternet bağlantısını kontrol edin.', 'warn');
+      }
+    },
+
+    async 'live-delete'() {
+      const ok = await confirmDialog({
+        title: 'Sunucudaki turnuva ve tüm geçmiş silinsin mi?',
+        body: 'Bu yönetici linkine bağlı mevcut turnuva, tüm arşivler, oyuncu havuzu ve bildirim abonelikleri kalıcı olarak silinir. Bağlantılar çalışmaz. Bu cihazdaki yerel kopya ve indirilmiş yedekler kalır. İşlem geri alınamaz.',
+        ok: 'Kalıcı olarak sil',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await live.remove();
+        saveAlerts(null);
+        toast('Sunucu kayıtları silindi. Bu cihazdaki yerel kopya korunuyor.', 'ok');
       } catch {
-        toast('Yayın başlatılamadı. İnternet bağlantısını kontrol edin.', 'warn');
+        toast('Silme doğrulanamadı. Bağlantıyı kontrol edip tekrar deneyin.', 'warn');
       }
     },
 

@@ -107,7 +107,7 @@
         } catch {
           return;
         }
-        if (msg && msg.type === 'state') onMessage(msg, lastSeen);
+        if (msg && (msg.type === 'state' || msg.type === 'deleted')) onMessage(msg, lastSeen);
       };
       socket.onclose = () => {
         if (ws !== socket) return;
@@ -344,6 +344,13 @@
     }
 
     function onMessage(msg, receivedAt) {
+      if (msg.type === 'deleted') {
+        disconnect();
+        fatal = 'not_found';
+        if (cfg) { cfg.pending = 0; write(); }
+        emit();
+        return;
+      }
       const session = cfg;
       if (!session || msg.rev < cfg.rev) return;
       // Yetki kaybı, özel arşivin indirilmesini beklemez.
@@ -488,6 +495,16 @@
           write();
           schedule(0);
         }
+        emit();
+      },
+
+      async remove() {
+        if (!cfg) return;
+        const res = await call('DELETE', `/api/t/${cfg.id}`);
+        if (!res.ok && res.status !== 404) throw new Error(res.data?.error || `http_${res.status}`);
+        disconnect();
+        cfg = null;
+        write();
         emit();
       },
 

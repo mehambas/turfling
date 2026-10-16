@@ -8,9 +8,11 @@ const NETWORK_TIMEOUT_MS = 3000;
 const ASSETS = [
   '/',
   '/izle',
+  '/privacy',
   '/css/style.css',
   '/css/izle.css',
   '/js/tournament.js',
+  '/js/demo.js',
   '/js/sync.js',
   '/js/crests.js',
   '/js/views.js',
@@ -80,7 +82,10 @@ async function fromNetworkOrCache(request, network) {
   try {
     return await Promise.race([network, timeout]);
   } catch {
-    return (await caches.match(request, { ignoreSearch: true })) || network;
+    const url = new URL(request.url);
+    const canonical = { '/index.html': '/', '/izle.html': '/izle', '/privacy.html': '/privacy' }[url.pathname];
+    return (await caches.match(request, { ignoreSearch: true })) ||
+      (canonical && await caches.match(new URL(canonical, url.origin).href, { ignoreSearch: true })) || network;
   }
 }
 

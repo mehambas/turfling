@@ -5,9 +5,10 @@ import { b64url } from '../src/push.js';
 const config = fileURLToPath(new URL('../wrangler.toml', import.meta.url));
 
 // Yerel .dev.vars testleri etkilemesin; buradaki değerler onun önüne geçer.
-export async function startWorker({ presenceMs, vars = {} } = {}) {
+export async function startWorker({ presenceMs, vars = {}, creationLimit = 10000 } = {}) {
   const plain = (value) => ({ type: 'plain_text', value: String(value) });
   const bindings = Object.fromEntries(Object.entries({ PRESENCE_MS: presenceMs, VAPID_KEY: '', ...vars }).filter(([, v]) => v != null).map(([k, v]) => [k, plain(v)]));
+  bindings.CREATE_LIMITER = { type: 'ratelimit', namespace_id: '2026101601', simple: { limit: creationLimit, period: 60 } };
   const worker = await unstable_startWorker({
     config,
     bindings,

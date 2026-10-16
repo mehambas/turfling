@@ -1,106 +1,95 @@
-# Halı Saha Turnuvası
+# Halı Saha Tournament
 
-3 takım için turnuva takip ekranı: oyuncu havuzu, torbalı kura, canlı skor ve süre, puan durumu, fikstür, gol krallığı, turnuva arşivi ve kişisel istatistikler.
-Build adımı yok; düz HTML/CSS/JS.
+A local-first football tournament manager **for three teams**, with a Turkish interface. Plain HTML, CSS and JavaScript; no build step. Optional Cloudflare Workers hosting adds live scores, shared administration and push notifications.
 
-## Çalıştırma
+## Run locally
 
-`index.html` dosyasına çift tıklamak yeterli. İnternet gerekmez; veriler tarayıcıda (localStorage) saklanır.
-Sayfa kapanıp açılsa da kaldığı yerden devam eder. Turnuva öncesinde ve sonrasında *Kurulum → Yedek → İndir* önerilir.
+Open `index.html` directly, or serve the repository with a static HTTP server. Data stays in that browser's localStorage. Fonts are bundled and a service worker supports offline use over HTTP(S).
 
-## Oyuncu havuzu ve yeni turnuva
+Use **Kurulum → Yedek → İndir** to download a JSON backup. Backups include the current tournament, permanent player pool and every archive. Import replaces the local collection after attempting to download a backup of existing data.
 
-Oyuncuların kimlikleri kalıcıdır; takım üyeliği her turnuvaya aittir. *Kurulum → Oyuncu havuzundan seç* bölümünden o gün katılacakları ekleyin, yeni kişileri isim alanından oluşturun. Katılmayan kişiyi listeden çıkarmak havuzu ve geçmişini silmez. Aynı isimde farklı kişiler ayrı kaydedilebilir; ayırt etmek için soyadı veya lakap eklenebilir. Yanlışlıkla iki kez oluşturulan kişi, profilindeki *Mükerrer kaydı birleştir* ile tek kimliğe taşınabilir. Önce yedek indirilir; aynı turnuvada farklı takımlarda veya aynı maçta rakip görünen kayıtlar birleştirilmez.
+## Features
 
-Katılımcıları seçtikten sonra torbaları belirleyip kurayı çekin. **K** işareti kaleciyi belirtir. Kura, torba ve kişi sayısı dengesini koruyan 301 aday arasından önce kalecileri daha dengeli dağıtan, sonra geçmişte aynı takımda bulunma tekrarını azaltan seçeneği alır. Yakın turnuvalara daha fazla ağırlık verir; gol ve galibiyet sayısını otomatik oyuncu gücü saymaz. Bu bir aday aramasıdır; matematiksel olarak en iyi dağılım garantisi vermez.
+- Permanent player identities, attendance selection from the player pool and new-player entry. Teams belong to individual tournaments.
+- Pot-based draws compare 301 candidates, prioritising goalkeeper balance and then reducing repeated teammates. Recent tournaments carry more weight. This is a heuristic, not a guaranteed optimum or an automatic skill rating.
+- League, optional playoff and final; configurable match lengths, rounds and breaks; standings, scorers, summaries and penalties.
+- Automatic match lineups with optional exceptions. Participation is counted per match, not by minutes played.
+- Archives, player totals, teammate/opponent history and corrections with explicit save/cancel. Normal-time results, shootouts, own goals and unattributed goals are counted separately.
+- **Yeni turnuva** archives a completed tournament, preserves the pool/history and clears attendance. Duplicate identities can be merged unless their match/team histories conflict. Legacy backups migrate without losing goals or identities.
+- TV/projector view, mobile viewer page, optional goal/result and timer notifications.
 
-Turnuva tamamlanınca *Geçmiş → Arşivle* kullanılabilir. *Yeni turnuva* da tamamlanan turnuvayı arşivler, mevcut verilerin JSON yedeğini indirmeyi başlatır ve boş katılımcı listesi açar. Format ayarları korunur; tarih ve saat temizlenir. Bitmemiş turnuvanın üzerine yeni turnuva açılmaz. Arşivlenmiş turnuvanın sonuçları sıfırlanamaz.
+The default format has six league matches (two rounds), a second-versus-third playoff and a final. League points are 3/1/0; ties use goal difference, goals scored, head-to-head results, then an explicit decision. Playoff and final can be disabled. Space pauses/resumes the live clock; Escape dismisses open panels.
 
-## Maç kadroları ve geçmiş
+## Live sharing and access
 
-Maç başlatılırken kadro otomatik saklanır; ayrıca onay gerekmez. Fikstürdeki veya canlı maçtaki *Kadro* düğmesiyle sadece o maçın istisnaları değiştirilebilir. Oyuncu maçın bir bölümünde bile oynadıysa kadroda tutulur. Bu sürüm süre/dakika bazında oyuncu değişikliği ve aynı maçta iki tarafta oynama takibi yapmaz.
+In **Kurulum → Canlı yayın**, choose **Yayını başlat** to upload the collection. Subsequent tournaments reuse the same viewer and administrator links. Without live sharing, tournament data is local only.
 
-*Geçmiş* sekmesinde turnuvalar, toplam maç ve goller, oyuncuların maç/G/B/M/gol sayıları bulunur. Oyuncuya dokununca birlikte ve rakip olarak oynadığı kişiler, karşılıklı sonuçlar ve katıldığı turnuvalar görünür. İstatistikler arşivlerle mevcut turnuvanın biten maçlarından hesaplanır; aynı turnuva iki kez sayılmaz. Katılım sayısı turnuvanın katılımcı listesini, maç sayısı maç kadrosunu esas alır. G/B/M normal süre sonucudur; penaltıyla kazanılan maçlar profilde ayrıca gösterilir. Seri penaltılar gol toplamına girmez; kendi kalesine ve sahibi bilinmeyen goller ayrı tutulur.
+**Save the administrator link using its Copy button.** The plain homepage does not identify your collection. Opening the administrator link in another browser restores the current tournament and private history. The application removes the key from the address bar after accepting it. There is no user account or lost-link recovery. Anyone holding the administrator link can edit or delete the collection.
 
-Arşivdeki *Kadro / düzeltme* ile gol, gol sahibi, penaltı sonucu ve maç kadrosu düzenlenir. *Kaydet* uygulanana kadar kayıt değişmez. Oynanmış bir eleme eşleşmesini geçersiz kılan skor düzeltmesi reddedilir. Eski sürümün yedeği kimlik ve goller korunarak dönüştürülür; maç kadroları turnuva kadrosundan alınır ve varsayım olarak işaretlenir. İlk yerel sürümün ham kaydı, alan varsa `halisaha-turnuva-ilk-yedek` anahtarında da korunur.
+Anonymous GET and WebSocket responses expose only the current tournament. The player pool and archives require `GET /api/t/:id/admin` with the administrator bearer key. Only one device writes at a time; others can view and explicitly take over. Revisions protect against stale offline writes.
 
-Yedek indirme/yükleme oyuncu havuzunu ve tüm arşivi kapsar. Yükleme mevcut koleksiyonun yerine geçer; değiştirmeden önce mevcut koleksiyonun yedeği indirilmeye çalışılır.
+Current-state updates do not resend archives. Library changes send only changed records; large uploads/imports use roughly 512 KiB batches. Library storage is chunked and revisions are written transactionally. The request limit is 1 MiB and the current tournament limit is 64 KiB. Old clients using the full-library protocol must refresh.
 
-## Yayın ekranı (TV / projektör)
+Browser storage is origin-specific. Two domains on the same Worker have separate browser caches, but **the backend is shared and an administrator key is valid on either domain**. A second hostname is not a separate security boundary.
 
-Üst çubuktaki ekran simgesi `index.html#ekran` adresini yeni pencerede açar: büyük skor, süre ve sıradaki maç.
-Salt okunurdur; sağ üstteki *Fikstür* düğmesi fikstürü gösterir, yanındaki düğme tam ekrana geçirir.
-Aynı tarayıcıda açık olduğu sürece skorlar anlık güncellenir. Ses yalnızca yönetim ekranında çalar.
+## Deploy on Cloudflare
 
-## Format (varsayılan)
-
-- Lig: 2 devre, her takım diğer ikisiyle 2 kez oynar (6 maç × 12 dk). Sıra A–B, C–A, B–C: kimse üst üste 3 maç oynamaz.
-- Playoff: lig 2.si – 3.sü (10 dk), kazanan finale çıkar. Lig 1.si bu sırada dinlenir.
-- Final: lig 1.si – playoff galibi (15 dk).
-- Galibiyet 3, beraberlik 1 puan. Eşitlikte: averaj → atılan gol → ikili maçlar → penaltı / yazı-tura.
-- Eleme maçları berabere biterse penaltı sonucu girilir.
-
-Toplam ≈ 1 sa 52 dk. Süre yetmezse playoff tek tıkla kaldırılabilir; final o zaman lig 1.si – 2.si olur (≈ 1 sa 40 dk).
-Final de kaldırılabilir (*Kurulum → Süreler → Final* ya da fikstürde *Kaldır*); o zaman playoff da oynanmaz ve lig bitince puan durumunda 1. olan takım şampiyon olur (≈ 1 sa 22 dk).
-Birinciler her şeyiyle eşitse şampiyon penaltı ya da yazı-tura ile belirlenir.
-Devre sayısı, maç süreleri, değişim ve ara süreleri *Kurulum* sekmesinden değiştirilebilir.
-
-## Maç özeti
-
-Biten bir maçın skoruna dokununca özeti açılır: kim kaç gol attı, hangi dakikada, gol sırasıyla ara skorlar, penaltılar ve sonuç.
-Yönetim ekranında Fikstür'den, izleyici sayfasında Fikstür sekmesinden, takım sayfasından ve "Son maç" kartından açılır; TV'de Fikstür penceresinden.
-
-## Kısayollar
-
-- `Boşluk`: canlı maçın saatini duraklat / devam ettir
-- `Esc`: golü atan panelini, açık menüleri ya da yayın ekranındaki fikstürü kapat
-
-## Yazı tipleri
-
-Barlow ve Barlow Condensed `fonts/` klasöründe (Latin + Latin-ext, woff2); internet gerekmez.
-Lisans: SIL Open Font License 1.1 (`fonts/OFL.txt`).
-
-## Testler
+Requires a current Node.js version supported by Wrangler and a Cloudflare account.
 
 ```sh
-node --test tests/*.test.js
+cd worker
+npm ci
+npx wrangler dev
+# After reviewing configuration:
+npx wrangler deploy
 ```
 
-## Yayınlama (isteğe bağlı)
+`worker/wrangler.toml` declares static assets, the SQLite-backed `Turnuva` Durable Object and a creation rate limiter. `.assetsignore` excludes server source, tests, internal documentation and Wrangler caches. Never commit `.dev.vars`, `.wrangler`, real tournament exports or administrator links.
 
-Statik site olduğu için Cloudflare Pages'e klasör olduğu gibi yüklenebilir
-(dashboard'dan sürükle-bırak ya da `npx wrangler pages deploy .`).
-Yalnız statik barındırmada veriler her cihazın tarayıcısında tutulur. Ortak canlı yayın ve sunucuda kalıcı kayıt için `worker/` içindeki Worker kullanılır. *Kurulum → Canlı yayın → Yayını başlat* ile mevcut koleksiyon sunucuya gönderilir; aynı yönetici bağlantısından başka cihazda açılabilir. Yeni turnuvalar aynı bağlantı altında devam eder. Bağlantı yokken değişiklikler tarayıcıda kalır; bağlantı gelince mevcut sürüm/tek yönetici kurallarıyla senkronize edilir.
+For a separate staging namespace:
 
-Sunucu mevcut turnuvayı ve arşivi ayrı depolama kayıtlarında tutar. Kimliksiz GET ve WebSocket yalnız mevcut turnuvayı döndürür; oyuncu havuzu ve arşiv yönetici anahtarı isteyen `/api/t/:id/admin` üzerinden alınır. Yönetici, kütüphane sürümü değişmedikçe canlı yayın mesajlarını elindeki kütüphaneyle birleştirir.
+```sh
+npx wrangler deploy --name hali-saha-test
+```
 
-Skor/saat PUT istekleri kütüphaneyi içermez. Oyuncu havuzu değiştiğinde havuz; arşiv değiştiğinde yalnız eklenen/düzeltilen kayıtlar ve silinen kayıt kimlikleri `library` alanında gönderilir. Büyük ilk aktarım ve yedek yüklemesi yaklaşık 512 KiB kütüphane gruplarıyla ilerler; tamamlanana kadar bekleyen değişiklik göstergesi açık kalır. Yeniden açılan cihaz önce sunucudaki kütüphaneyi öğrenir. Arşiv büyüklüğü sıradan canlı güncellemenin boyutunu artırmaz.
+Links use the current origin. No custom domain is configured yet. Keep the existing workers.dev hostname when adding a portfolio hostname, so existing browser records remain accessible.
 
-Kütüphane yalnız değiştiğinde yazılır; tekrar gelen aynı içerik yeniden yazılmaz. Depolama parçaları ve revizyon aynı işlemde kaydedilir. İstek sınırı 1 MiB, mevcut turnuva sınırı 64 KiB'dır. Eski toplu arşiv protokolüyle yazmaya çalışan istemciden sayfayı yenilemesi istenir; arşiv böylece yanlışlıkla silinmez. `.wrangler` ve `docs` statik yayına dahil edilmez. Herkese açılmadan önceki erişim/saklama işleri `docs/yayin-oncesi.md` içinde takip edilir.
+### Push notifications
 
-## Gol bildirimi
-
-İzleyici sayfasındaki zil, o yayının gollerini, biten maçların sonucunu ve şampiyonu telefona bildirim olarak gönderir; bildirim telefonun kendi titreşimi ve sesiyle gelir.
-iPhone'da yalnız ana ekrana eklenmiş uygulamada çalışır (iOS 16.4+); Safari'de zile dokununca bu anlatılır.
-
-Yönetim ekranında *Kurulum → Canlı yayın → Süre bildirimi* açılırsa maçın son dakikasında ve süre bitince o cihaza da bildirim gelir, telefon kilitliyken de.
-Zamanı sunucu tutar; duraklatma ve maçı bitirme bildirimi kendiliğinden kaydırır ya da iptal eder.
-Yönetim ekranı açıkken Android'de bildirim gelmez, uyarıyı sayfa kendisi verir (ses ve titreşim); iPhone'da bildirim her zaman gelir.
-
-Worker bir kez VAPID anahtarı ister; anahtar yoksa zil ve süre bildirimi görünmez:
+Push is optional and stays disabled without a VAPID secret:
 
 ```sh
 cd worker
 node vapid-key.js | npx wrangler secret put VAPID_KEY
 ```
 
-Yerelde (`npm run dev`) denemek için: `printf 'VAPID_KEY=%s\n' "$(node vapid-key.js)" > .dev.vars`
+For development, place a generated VAPID JSON value in the ignored `worker/.dev.vars` file as `VAPID_KEY`. Never publish that file. On iOS, notifications require the installed home-screen application.
 
-Canlı turnuvaya dokunmadan denemek için aynı kod ayrı bir Worker olarak yayınlanabilir.
-Adresi, turnuvaları ve tarayıcıdaki kayıtları canlı sürümden tamamen ayrıdır:
+## Creation limits, deletion and retention
+
+- Anonymous `POST /api/t` allows 10 creations per 60 seconds per IP and hostname at each Cloudflare location. Shared networks share that allowance. Rejection returns `429`, `rate_limited` and `Retry-After: 60`; the UI explains when to retry. Ordinary live updates are unaffected. This is location-based, not a strict global quota: [Cloudflare Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
+- Authenticated `DELETE /api/t/:id` permanently deletes the whole live collection, including archives, the pool, push subscriptions and alarms. The UI confirms the scope. Connected clients are notified; old links become unavailable. Browser copies and downloaded backups remain. Disconnecting a device is not deletion.
+- Retention uses the approved 365 days after the last actual content change. Creation starts the clock for empty records. Reads, heartbeats, takeovers and identical writes do not extend it. An alarm handles expiry alongside timer/presence alarms; expired records also reject access. `RETENTION_MS` supports isolated short-duration tests.
+- Legacy objects receive a full grace period when first awakened after the upgrade. Dormant objects with no alarm and no subsequent traffic require a separate inventory/migration before claiming a universal legacy cleanup deadline.
+
+Turkish and English privacy information is in `privacy.html`, linked from both interfaces together with the operator's Impressum. Release decisions are tracked in `docs/yayin-oncesi.md` (not served publicly).
+
+## Portfolio demo
+
+`js/demo.js` holds the single `PORTFOLIO_HOSTS` allowlist. It stays empty until the hostname is approved. The demo button never appears on workers.dev, even with `?demo=1`. For localhost/127.0.0.1 preview, use `?demo=1`.
+
+The button creates 15 synthetic players, three drawn teams and three completed matches locally. It refuses to replace existing players, a pool, archives, matches or a live connection. Nothing is uploaded until the visitor explicitly enables live sharing.
+
+## Tests
 
 ```sh
+node --test tests/*.test.js
 cd worker
-npx wrangler deploy --name hali-saha-test
-node vapid-key.js | npx wrangler secret put VAPID_KEY --name hali-saha-test
+npm test
 ```
+
+Worker tests use isolated, non-persistent local Workers and synthetic data. Most suites override the creation allowance so unrelated fixtures do not exhaust it; the lifecycle suite tests rate-limit rejection separately. Tests cover migration/statistics, lineups, draw balance, private access, large-library sync, conflicts, push, clocks, creation limits and deletion/expiry.
+
+## License
+
+Application code: [MIT](LICENSE), copyright 2026 Hamza Başaran. Bundled Barlow and Barlow Condensed fonts: SIL Open Font License 1.1, see [fonts/OFL.txt](fonts/OFL.txt).

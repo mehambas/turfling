@@ -105,7 +105,7 @@ describe('turnuva oluşturma', () => {
   test('yanlış yöntem 405', async () => {
     assert.equal((await api('/api/t')).status, 405);
     const t = await createTournament();
-    assert.equal((await api(`/api/t/${t.id}`, { method: 'DELETE' })).status, 405);
+    assert.equal((await api(`/api/t/${t.id}`, { method: 'PATCH' })).status, 405);
     assert.equal((await api(`/api/t/${t.id}/takeover`)).status, 405);
   });
 });
