@@ -1986,6 +1986,43 @@ button.iz-fx-score {
   gap: 16px;
 }
 
+.demo-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 16px;
+  padding: 22px 24px;
+  border-radius: 24px;
+  background: var(--pitch);
+  color: #fff;
+}
+
+.demo-card h2 {
+  font-family: var(--font-cond);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.demo-card p {
+  max-width: 52ch;
+  margin-top: 6px;
+  color: rgb(255 255 255 / 0.82);
+}
+
+.demo-card .btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.demo-card-hero {
+  max-width: 640px;
+  margin: 24px auto 0;
+}
+
 .setup-card {
   display: flex;
   flex-direction: column;

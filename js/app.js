@@ -25,7 +25,7 @@
   let live = null;
   const prefs = loadPrefs();
   const ui = {
-    tab: state.started ? 'dashboard' : 'setup',
+    tab: state.started || demoReady() ? 'dashboard' : 'setup',
     goalPicker: null,
     showAllScorers: false,
     finishing: false,
@@ -498,12 +498,27 @@
     return `${next ? renderSideNext(next) : ''}${renderTimeAlert()}${renderStandings()}${renderScorers()}`;
   }
 
+  function demoReady() {
+    return !!window.TournamentDemo?.available(location) && window.TournamentDemo.canLoad(state, !!live?.config);
+  }
+
+  function renderDemo(extraClass = '') {
+    if (!demoReady()) return '';
+    return `<section class="card demo-card ${extraClass}">
+      <div class="demo-copy">
+        <h2>${t('Üç takım için örnek turnuva')}</h2>
+        <p>${t('15 örnek oyuncu, hazır takımlar ve üç maçın sonuçlarıyla deneyin. Yayını başlatmadıkça veriler bu tarayıcıda kalır.')}</p>
+      </div>
+      <button class="btn btn-lime btn-lg" data-action="load-demo">${ICONS.play}${t('Örnek turnuva yükle')}</button>
+    </section>`;
+  }
+
   function renderNotStarted() {
     const n = state.players.length;
     const drawn = state.teams.every((t) => t.playerIds.length);
     const item = (no, done, text, extra = '') =>
       `<li class="${done ? 'is-done' : ''}"><span class="ck">${done ? ICONS.check : no}</span>${text}${extra}</li>`;
-    return `<section class="card hero">
+    return `${renderDemo('demo-card-hero')}<section class="card hero">
       <div class="hero-mark">${ICONS.ball}</div>
       <h1>${t('Turnuva henüz başlamadı')}</h1>
       <p>${t('Kurulumu tamamlayın. Ardından canlı skor, puan durumu ve zaman planı burada görünür.')}</p>
@@ -869,7 +884,7 @@
         <h1 class="page-title">${t('Kurulum')}</h1>
         ${state.started ? '' : renderSteps()}
       </div>
-      ${window.TournamentDemo?.available(location) && window.TournamentDemo.canLoad(state, !!live?.config) ? `<section class="card setup-card"><h2 class="card-title">${t('Üç takım için örnek turnuva')}</h2><p class="sc-hint">${t('15 örnek oyuncu, hazır takımlar ve üç maçın sonuçlarıyla deneyin. Yayını başlatmadıkça veriler bu tarayıcıda kalır.')}</p><button class="btn btn-sm" data-action="load-demo">${t('Örnek turnuva yükle')}</button></section>` : ''}
+      ${renderDemo()}
       <div class="setup">
         <div class="setup-side">${renderPlayers()}${renderData()}${renderLiveCard()}</div>
         <div class="setup-main">${renderTeams()}${renderFormat()}</div>
@@ -2004,7 +2019,7 @@
     },
 
     'load-demo'() {
-      if (!window.TournamentDemo?.available(location) || !window.TournamentDemo.canLoad(state, !!live?.config)) return;
+      if (!demoReady()) return;
       state = window.TournamentDemo.create();
       ui.tab = 'dashboard';
       saveState({ sync: false });
