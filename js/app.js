@@ -33,6 +33,7 @@
     colorMenu: null,
     moveMenu: null,
     sheet: false,
+    sheetMatch: null,
     scorersOpen: false,
     rulesOpen: false,
   };
@@ -89,7 +90,7 @@
   const V = Views.create(() => state);
   const showSheet = Views.sheetView($('#sheet'), {
     returnFocus: '[data-action="screen-fixtures"]',
-    onDismiss: () => (ui.sheet = false),
+    onDismiss: () => Object.assign(ui, { sheet: false, sheetMatch: null }),
   });
   const { team, player, liveMatch, nextMatch, findStage, estimates, tournamentName, lastFinished } = V;
   const { matchTitle, matchLabel, placeholder, teamName, lastResult, championData, renderStandings, fixtureGroups } = V;
@@ -125,8 +126,19 @@
   }
 
   function canTogglePlayoff() {
+    if (!T.hasFinal(state.settings)) return false;
     if (!state.started) return true;
     return findStage('playoff')?.status === 'pending' && findStage('final')?.status === 'pending';
+  }
+
+  function canToggleFinal() {
+    if (!state.started) return true;
+    return findStage('final')?.status === 'pending' && (!T.hasPlayoff(state.settings) || findStage('playoff')?.status === 'pending');
+  }
+
+  function announceChampion(before) {
+    const id = T.champion(state);
+    if (id && id !== before) toast(`Şampiyon: ${team(id)?.name || ''}`, 'ok');
   }
 
   function previewState() {
@@ -221,6 +233,8 @@
     'live-stop',
     'live-takeover',
     'alerts-toggle',
+    'match',
+    'sheet-back',
   ]);
 
   function liveLinks() {
@@ -358,7 +372,7 @@
   }
 
   function dropStale() {
-    if (dialog.kind === 'edit' && !match(dialog.matchId)) closeDialog(false);
+    if ((dialog.kind === 'edit' || dialog.kind === 'summary') && !match(dialog.matchId)) closeDialog(false);
     if (dialog.kind === 'goal' && (readOnly() || match(dialog.matchId)?.status !== 'live')) closeDialog(false);
     if (ui.goalPicker && !liveMatch()?.goals.some((g) => g.id === ui.goalPicker)) ui.goalPicker = null;
   }
@@ -615,7 +629,7 @@
 
   function renderNext(est) {
     const m = nextMatch();
-    if (!m) return '';
+    if (!m) return V.awaitingChampion() ? renderTieCard() : '';
     const ready = !!(m.home && m.away);
     const blocking = m.stage !== 'league' && T.blockingTies(state).length > 0;
     const last = lastFinished();
@@ -641,6 +655,17 @@
     </section>`;
   }
 
+  function renderTieCard() {
+    return `<section class="pitch-card next-card" aria-label="Şampiyon belirlenecek">
+      ${PITCH_LINES}
+      <div class="pc-body">
+        <div class="lc-top"><div class="lc-top-l"><span class="tag-next">Lig bitti</span></div></div>
+        <h1 class="champ-name">Şampiyon belirlenecek</h1>
+        ${renderLotsAlert()}
+      </div>
+    </section>`;
+  }
+
   function renderLotsAlert() {
     const groups = T.blockingTies(state);
     const names = (g) => g.map((id) => `<strong>${esc(team(id).name)}</strong>`).join(' ve ');
@@ -655,14 +680,14 @@
   }
 
   function renderChampion(id) {
-    const { t, fin, players, best } = championData(id);
+    const { t, players, best, line } = championData(id);
     return `<section class="pitch-card champion" style="${teamStyle(t)}" aria-label="Şampiyon">
       ${PITCH_LINES}
       <div class="pc-body">
         <span class="champ-icon">${ICONS.trophy}</span>
         <span class="champ-kicker">Şampiyon</span>
         <h1 class="champ-name">${swatch(t, { big: true })}${esc(t.name)}</h1>
-        <p class="champ-line">Final: ${lastResult(fin)}</p>
+        <p class="champ-line">${line}</p>
         <div class="champ-players">${players}</div>
         ${best.length ? `<p class="champ-line">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</p>` : ''}
       </div>
@@ -683,7 +708,7 @@
     const done = list.filter((m) => m.status === 'done').length;
     const overMin = sc.pitchEnd == null ? 0 : minuteOf(sc.estEnd) - minuteOf(sc.pitchEnd);
     if (overMin <= 0 || done >= list.length) return '';
-    const canCut = sc.playoffSaving > 0 && state.settings.playoffEnabled && canTogglePlayoff();
+    const canCut = sc.playoffSaving > 0 && T.hasPlayoff(state.settings) && canTogglePlayoff();
     return `<section class="card alert-card" role="status">
       <strong>Süre yetmeyebilir</strong>
       <p>Tahmini bitiş ${fmtTime(sc.estEnd)}, saha saatini ${overMin} dk aşıyor.${canCut ? ` Playoff kaldırılırsa tahmini bitiş ${fmtTime(sc.estEnd - sc.playoffSaving)} olur.` : ''}</p>
@@ -722,7 +747,7 @@
       ? `Önizleme · ${active.length} maç · Bitiş ~${fmtTime(sc.estEnd)}`
       : `${done} oynandı · ${left} kaldı${left ? ` · Bitiş ~${fmtTime(sc.estEnd)}` : ''}`;
     const f = preview ? 'all' : ui.fixtureFilter;
-    const skipped = (m) => m.stage === 'playoff' && !st.settings.playoffEnabled;
+    const skipped = (m) => !active.includes(m);
     const keep = (m) => f === 'all' || (f === 'done' ? m.status === 'done' : m.status !== 'done' && !skipped(m));
     const groups = fixtureGroups(st)
       .map((g) => ({ ...g, matches: g.matches.filter(keep) }))
@@ -740,19 +765,18 @@
       </div>
       <div class="stack">
         ${preview ? '<p class="page-note">Turnuva başlayınca skorlar ve gerçek saatler burada görünür.</p>' : renderTimeAlert()}
-        ${groups.map((g) => fixtureCard(g, st, est, { readonly: preview })).join('') || '<p class="page-note">Bu filtrede maç yok.</p>'}
+        ${groups.map((g) => fixtureCard(g, st, est, { readonly: preview, active })).join('') || '<p class="page-note">Bu filtrede maç yok.</p>'}
       </div>`;
   }
 
   function fixtureCard(g, st, est, opts) {
     return `<section class="card fx-card" aria-label="${g.title}">
       <h2 class="fx-title">${g.title}</h2>
-      <div class="fx-rows">${g.matches.map((m) => fixtureRow(m, st, est[m.id], opts)).join('')}</div>
+      <div class="fx-rows">${g.matches.map((m) => fixtureRow(m, st, est[m.id], { ...opts, skipped: !opts.active.includes(m) })).join('')}</div>
     </section>`;
   }
 
-  function fixtureRow(m, st, it, { readonly = false } = {}) {
-    const skipped = m.stage === 'playoff' && !st.settings.playoffEnabled;
+  function fixtureRow(m, st, it, { readonly = false, skipped = false } = {}) {
     const s = T.score(m);
     const w = T.winnerOf(m);
     const label = matchTitle(m, st.matches);
@@ -775,10 +799,15 @@
     else if (m.status === 'done') time = fmtTime(m.startedAt);
     else if (it) time = `~${fmtTime(it.estStart)}`;
     const score = m.status === 'done' ? `${s.home} – ${s.away}${m.pens ? `<small>pen. ${m.pens.home}–${m.pens.away}</small>` : ''}` : '–';
+    const scoreEl =
+      m.status === 'done'
+        ? `<button class="fx-score row-hit" data-action="match" data-match="${m.id}" aria-label="${label} özeti: ${lastResult(m)}">${score}</button>`
+        : `<span class="fx-score">${score}</span>`;
     let act = '';
     if (!readonly) {
       if (skipped) {
-        act = canTogglePlayoff() ? '<button class="btn btn-sm" data-action="set-playoff" data-value="1">Geri ekle</button>' : '';
+        if (m.stage === 'final' && canToggleFinal()) act = '<button class="btn btn-sm" data-action="set-final" data-value="1">Geri ekle</button>';
+        else if (m.stage === 'playoff' && canTogglePlayoff()) act = '<button class="btn btn-sm" data-action="set-playoff" data-value="1">Geri ekle</button>';
       } else if (m.status === 'done') {
         act = canEdit(m)
           ? `<button class="icon-btn icon-soft" data-action="edit-match" data-id="${m.id}" aria-label="${label}: sonucu düzenle" title="Sonucu düzenle">${ICONS.edit}</button>`
@@ -786,6 +815,9 @@
       } else {
         if (m.stage === 'playoff' && canTogglePlayoff()) {
           act += '<button class="btn btn-sm" data-action="disable-playoff" title="Playoff kaldırılırsa final lig 1.si – 2.si oynanır">Kaldır</button>';
+        }
+        if (m.stage === 'final' && canToggleFinal()) {
+          act += '<button class="btn btn-sm" data-action="disable-final" title="Final kaldırılırsa lig 1.si şampiyon olur">Kaldır</button>';
         }
         if (!liveMatch() && m.home && m.away) {
           act += `<button class="icon-btn icon-soft" data-action="start-match" data-id="${m.id}" aria-label="${label}: başlat" title="Bu maçı başlat">${ICONS.play}</button>`;
@@ -796,7 +828,7 @@
       <span class="fx-label">${label}</span>
       <span class="fx-time">${time}</span>
       <span class="fx-team fx-home">${side('home')}</span>
-      <span class="fx-score">${score}</span>
+      ${scoreEl}
       <span class="fx-team fx-away">${side('away')}</span>
       <span class="fx-act">${act}</span>
     </div>`;
@@ -980,7 +1012,9 @@
 
   function renderFormat() {
     const s = state.settings;
+    const fin = T.hasFinal(s);
     const togglable = canTogglePlayoff();
+    const finalOff = canToggleFinal() ? '' : 'disabled';
     const rounds = [1, 2, 3]
       .map((r) => `<button data-action="setting-rounds" data-value="${r}" aria-pressed="${s.leagueRounds === r}" ${state.started ? 'disabled' : ''}>${r} devre</button>`)
       .join('');
@@ -994,16 +1028,20 @@
         <div class="fmt-row fmt-row-2">
           <div class="box"><span class="box-label">Lig</span><div class="seg seg-box" role="group" aria-label="Lig devre sayısı">${rounds}</div></div>
           <div class="box"><span class="box-label">Playoff</span><div class="seg seg-box" role="group" aria-label="Playoff">
-            <button data-action="set-playoff" data-value="1" aria-pressed="${s.playoffEnabled}" ${off}>Açık</button>
-            <button data-action="set-playoff" data-value="0" aria-pressed="${!s.playoffEnabled}" ${off}>Kapalı</button>
-          </div></div>
+            <button data-action="set-playoff" data-value="1" aria-pressed="${T.hasPlayoff(s)}" ${off}>Açık</button>
+            <button data-action="set-playoff" data-value="0" aria-pressed="${!T.hasPlayoff(s)}" ${off}>Kapalı</button>
+          </div>${fin ? '' : '<span class="box-note">Final yokken playoff oynanmaz</span>'}</div>
+          <div class="box"><span class="box-label">Final</span><div class="seg seg-box" role="group" aria-label="Final">
+            <button data-action="set-final" data-value="1" aria-pressed="${fin}" ${finalOff}>Açık</button>
+            <button data-action="set-final" data-value="0" aria-pressed="${!fin}" ${finalOff}>Kapalı</button>
+          </div>${fin ? '' : '<span class="box-note">Lig 1.si şampiyon olur</span>'}</div>
         </div>
         <div class="fmt-row fmt-row-steps">
           ${stepper('leagueMin', 'Lig maçı')}
-          ${s.playoffEnabled ? stepper('playoffMin', 'Playoff maçı') : ''}
-          ${stepper('finalMin', 'Final')}
+          ${T.hasPlayoff(s) ? stepper('playoffMin', 'Playoff maçı') : ''}
+          ${fin ? stepper('finalMin', 'Final') : ''}
           ${stepper('changeMin', 'Maç arası')}
-          ${stepper('breakMin', 'Lig sonrası ara')}
+          ${fin ? stepper('breakMin', 'Lig sonrası ara') : ''}
         </div>
         <div class="fmt-row fmt-row-2">
           ${timeField('plannedDate', 'Tarih', 'İzleyici ekranında görünür', 'date')}
@@ -1111,12 +1149,12 @@
 
   function renderSheet() {
     const open = ui.sheet && isScreen();
-    if (!showSheet(open ? V.renderSheet({ scorersOpen: ui.scorersOpen, rulesOpen: ui.rulesOpen }) : '')) ui.sheet = false;
+    if (!showSheet(open ? V.renderSheet({ scorersOpen: ui.scorersOpen, rulesOpen: ui.rulesOpen, matchId: ui.sheetMatch }) : '')) ui.sheet = false;
   }
 
   function closeSheet() {
     if (!ui.sheet) return;
-    ui.sheet = false;
+    Object.assign(ui, { sheet: false, sheetMatch: null });
     renderSheet();
   }
 
@@ -1127,7 +1165,8 @@
       el.innerHTML = '';
       return;
     }
-    el.innerHTML = dialog.kind === 'confirm' ? confirmHtml() : dialog.kind === 'goal' ? goalHtml() : editHtml();
+    const html = { confirm: confirmHtml, goal: goalHtml, summary: summaryHtml }[dialog.kind] || editHtml;
+    el.innerHTML = html();
     if (!el.open) el.showModal();
   }
 
@@ -1139,6 +1178,18 @@
       <div class="dialog-actions">
         <button class="btn" data-action="dialog-cancel">${esc(o.cancel || 'Vazgeç')}</button>
         <button class="btn ${o.danger ? 'btn-danger' : 'btn-primary'}" data-action="dialog-ok">${esc(o.ok || 'Tamam')}</button>
+      </div>
+    </div>`;
+  }
+
+  function summaryHtml() {
+    const m = match(dialog.matchId);
+    if (!m) return '';
+    return `<div class="dialog-body summary-dialog">
+      ${V.renderMatchSummary(m.id)}
+      <div class="dialog-actions">
+        ${canEdit(m) ? `<button class="btn" data-action="edit-match" data-id="${m.id}">${ICONS.edit}Sonucu düzenle</button>` : ''}
+        <button class="btn btn-primary" data-action="dialog-cancel">Kapat</button>
       </div>
     </div>`;
   }
@@ -1376,11 +1427,12 @@
   }
 
   function finishLive(m, pens) {
+    const before = T.champion(state);
     commit(() => T.finishMatch(m, pens, Date.now()), { rerender: false });
     ui.finishing = false;
     ui.goalPicker = null;
     render();
-    if (m.stage === 'final') toast(`Şampiyon: ${team(T.champion(state))?.name || ''}`, 'ok');
+    announceChampion(before);
   }
 
   function openMenu(key, id) {
@@ -1520,8 +1572,29 @@
     },
 
     'set-playoff'(el) {
+      if (!T.hasFinal(state.settings)) return toast('Final yokken playoff oynanmaz', 'warn');
       if (!canTogglePlayoff()) return toast('Playoff başladıktan sonra değiştirilemez', 'warn');
       commit(() => (state.settings.playoffEnabled = el.dataset.value === '1'));
+    },
+
+    'set-final'(el) {
+      if (!canToggleFinal()) return toast('Final ya da playoff başladıktan sonra değiştirilemez', 'warn');
+      const before = T.champion(state);
+      commit(() => (state.settings.finalEnabled = el.dataset.value === '1'));
+      announceChampion(before);
+    },
+
+    async 'disable-final'() {
+      if (!canToggleFinal()) return;
+      const ok = await confirmDialog({
+        title: 'Final kaldırılsın mı?',
+        body: `${T.hasPlayoff(state.settings) ? 'Playoff da oynanmaz. ' : ''}Lig bitince puan durumunda 1. olan takım şampiyon olur. İsterseniz fikstürden geri ekleyebilirsiniz.`,
+        ok: 'Kaldır',
+      });
+      if (!ok) return;
+      const before = T.champion(state);
+      commit(() => (state.settings.finalEnabled = false));
+      announceChampion(before);
     },
 
     async 'disable-playoff'() {
@@ -1724,15 +1797,39 @@
       commit(() => {
         for (const g of groups) for (const id of g) state.lots[id] = Math.random();
       });
-      toast(`Kura sonucu: ${T.computeStandings(state).rows.map((r, i) => `${i + 1}. ${team(r.team).name}`).join(', ')}`, 'ok');
+      const champ = T.hasFinal(state.settings) ? null : T.champion(state);
+      if (champ) toast(`Kura sonucu: şampiyon ${team(champ).name}`, 'ok');
+      else toast(`Kura sonucu: ${T.computeStandings(state).rows.map((r, i) => `${i + 1}. ${team(r.team).name}`).join(', ')}`, 'ok');
     },
 
     'lots-set'(el) {
       const group = T.blockingTies(state).find((g) => g.includes(el.dataset.first));
       if (!group) return;
+      const before = T.champion(state);
       commit(() => {
         for (const id of group) state.lots[id] = id === el.dataset.first ? 0 : 1;
       });
+      announceChampion(before);
+    },
+
+    match(el) {
+      const m = match(el.dataset.match);
+      if (!m) return;
+      if (isScreen()) {
+        ui.sheetMatch = m.id;
+        renderSheet();
+        $('#sheet [data-action="sheet-back"]')?.focus({ preventScroll: true });
+        return;
+      }
+      Object.assign(dialog, { kind: 'summary', matchId: m.id, error: '' });
+      renderDialog();
+    },
+
+    'sheet-back'() {
+      const id = ui.sheetMatch;
+      ui.sheetMatch = null;
+      renderSheet();
+      $(`#sheet [data-action="match"][data-match="${id}"]`)?.focus({ preventScroll: true });
     },
 
     export() {

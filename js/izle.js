@@ -40,15 +40,16 @@
   const push = { key: null, reg: null, on: false, busy: false };
   // iPhone'da push yalnız ana ekrana eklenmiş uygulamada var; Safari'deki zil bunu anlatır.
   const needsInstall = navigator.standalone === false;
-  const ui = { sheet: false, scorersOpen: false, rulesOpen: false, tab: 'mac' };
+  const ui = { sheet: false, sheetMatch: null, scorersOpen: false, rulesOpen: false, tab: 'mac' };
   const V = Views.create(() => state);
   const showSheet = Views.sheetView(sheet, {
     returnFocus: '[data-action="screen-fixtures"]',
-    onDismiss: () => (ui.sheet = false),
+    onDismiss: () => Object.assign(ui, { sheet: false, sheetMatch: null }),
   });
 
   let nav = null;
-  const teams = {};
+  // Her sekme kendi sayfa yığınını tutar: takım ve maç sayfaları birbirinin üstüne açılabilir.
+  const stacks = Object.fromEntries(Object.keys(TABS).map((tab) => [tab, []]));
   const opened = [];
   const openers = new WeakMap();
   const filled = new WeakMap();
@@ -150,12 +151,12 @@
   }
 
   function renderSheet() {
-    if (!showSheet(ui.sheet ? V.renderSheet({ scorersOpen: ui.scorersOpen, rulesOpen: ui.rulesOpen }) : '')) ui.sheet = false;
+    if (!showSheet(ui.sheet ? V.renderSheet({ scorersOpen: ui.scorersOpen, rulesOpen: ui.rulesOpen, matchId: ui.sheetMatch }) : '')) ui.sheet = false;
   }
 
   function closeSheet() {
     if (!ui.sheet) return;
-    ui.sheet = false;
+    Object.assign(ui, { sheet: false, sheetMatch: null });
     render();
   }
 
@@ -175,7 +176,11 @@
       nav.sections[tab] = view.querySelector(`[data-sec="${tab}"]`);
       nav.roots[tab] = nav.sections[tab].firstElementChild;
     }
-    for (const [tab, teamId] of Object.entries(teams)) mountTeam(tab, teamId, { instant: true });
+    for (const [tab, stack] of Object.entries(stacks)) {
+      const bad = stack.findIndex((e) => !pageExists(e));
+      if (bad >= 0) stack.length = bad;
+      for (const entry of stack) mountPage(tab, entry, { instant: true });
+    }
   }
 
   function renderTabs(opts) {
@@ -183,12 +188,11 @@
     fill(nav.roots.mac.querySelector('.iz-page-body'), V.renderWatch({ ...opts, links: true }));
     fill(nav.roots.fikstur.querySelector('.iz-scroll'), V.renderFixturePage({ rulesOpen: ui.rulesOpen }));
     fill(nav.roots.puan.querySelector('.iz-scroll'), V.renderStandingsPage());
-    for (const [tab, teamId] of Object.entries(teams)) {
-      if (!V.team(teamId)) {
-        closeTeam(tab, { instant: true });
-        continue;
-      }
-      fillTeam(teamPage(tab), teamId);
+    for (const [tab, stack] of Object.entries(stacks)) {
+      const bad = stack.findIndex((e) => !pageExists(e));
+      if (bad >= 0) while (stack.length > bad) closeTop(tab, { instant: true });
+      const pages = pushedPages(tab);
+      stack.forEach((e, i) => fillPage(pages[i], e));
     }
     nav.tabbar.classList.toggle('is-live', !!V.liveMatch());
   }
@@ -197,18 +201,29 @@
   function fill(el, html) {
     if (filled.get(el) === html) return;
     const f = document.activeElement;
-    const key = el.contains(f) && f.dataset.action ? `[data-action="${f.dataset.action}"]${f.dataset.team ? `[data-team="${f.dataset.team}"]` : ''}` : null;
+    const key = el.contains(f) && f.dataset.action ? actionSelector(f) : null;
     el.innerHTML = html;
     filled.set(el, html);
     if (key) el.querySelector(key)?.focus({ preventScroll: true });
   }
 
-  function fillTeam(page, teamId) {
-    page.querySelector('.iz-bar-title').textContent = V.team(teamId).name;
-    fill(page.querySelector('.iz-scroll'), V.renderTeamPage(teamId));
+  function actionSelector(el) {
+    const { action, team, match } = el.dataset;
+    return `[data-action="${action}"]${team ? `[data-team="${team}"]` : ''}${match ? `[data-match="${match}"]` : ''}`;
   }
 
-  const teamPage = (tab) => nav.sections[tab].querySelector('.iz-page.is-pushed');
+  const pageExists = (e) => (e.kind === 'team' ? !!V.team(e.id) : V.match(e.id)?.status === 'done');
+  const samePage = (a, b) => !!a && !!b && a.kind === b.kind && a.id === b.id;
+
+  function fillPage(page, e) {
+    const title = e.kind === 'team' ? V.team(e.id).name : V.matchTitle(V.match(e.id));
+    page.querySelector('.iz-bar-title').textContent = title;
+    fill(page.querySelector('.iz-scroll'), e.kind === 'team' ? V.renderTeamPage(e.id) : V.renderMatchSummary(e.id, { links: true }));
+  }
+
+  const pushedPages = (tab) => [...nav.sections[tab].querySelectorAll(':scope > .iz-page.is-pushed')];
+  const topPage = (tab) => pushedPages(tab).at(-1) || null;
+  const dimOf = (page) => page.querySelector(':scope > .iz-dim');
   const scroller = (tab) => (tab === 'mac' ? nav.roots.mac : nav.roots[tab].querySelector('.iz-scroll'));
 
   function tween(el, from, to, opts) {
@@ -220,7 +235,7 @@
   function selectTab(tab) {
     if (!nav || !TABS[tab]) return;
     if (tab === ui.tab) {
-      if (teams[tab]) back(tab);
+      if (stacks[tab].length) back(tab);
       else scroller(tab).scrollTo({ top: 0, behavior: REDUCED.matches ? 'auto' : 'smooth' });
       return;
     }
@@ -232,30 +247,34 @@
     if (!REDUCED.matches) sec.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: EASE });
   }
 
-  function openTeam(teamId, opener) {
-    if (!nav || teams[ui.tab] || !V.team(teamId)) return;
-    teams[ui.tab] = teamId;
+  function openPage(entry, opener) {
+    if (!nav || !pageExists(entry)) return;
+    const stack = stacks[ui.tab];
+    if (samePage(stack.at(-1), entry)) return;
+    // Bir alttaki sayfaya dönen bağlantı yeni sayfa açmaz, geri gider: takım → maç → aynı takım döngüsü birikmesin.
+    if (samePage(stack.at(-2), entry)) return back(ui.tab);
+    stack.push(entry);
     opened.push(ui.tab);
-    // Android'in geri tuşu ve tarayıcının geri düğmesi de takım sayfasını kapatsın.
-    history.pushState({ izTeam: teamId }, '');
-    mountTeam(ui.tab, teamId, { opener });
+    // Android'in geri tuşu ve tarayıcının geri düğmesi de açılan sayfayı kapatsın.
+    history.pushState({ izPage: true }, '');
+    mountPage(ui.tab, entry, { opener });
   }
 
-  function mountTeam(tab, teamId, { instant = false, opener = null } = {}) {
-    const root = nav.roots[tab];
-    root.insertAdjacentHTML(
+  function mountPage(tab, entry, { instant = false, opener = null } = {}) {
+    const under = topPage(tab) || nav.roots[tab];
+    under.insertAdjacentHTML(
       'afterend',
-      `<div class="iz-page is-pushed"><div class="iz-bar"><button class="iz-back" data-action="back">${Views.ICONS.back}Geri</button><span class="iz-bar-title"></span></div><div class="iz-scroll"></div></div>`,
+      `<div class="iz-page is-pushed"><div class="iz-bar"><button class="iz-back" data-action="back">${Views.ICONS.back}Geri</button><span class="iz-bar-title"></span></div><div class="iz-scroll"></div><div class="iz-dim"></div></div>`,
     );
-    const page = root.nextElementSibling;
+    const page = under.nextElementSibling;
     if (opener) openers.set(page, opener);
-    fillTeam(page, teamId);
+    fillPage(page, entry);
     V.tickClocks();
-    root.inert = true;
-    const dim = root.querySelector('.iz-dim');
+    under.inert = true;
+    const dim = dimOf(under);
     if (instant) {
       if (!REDUCED.matches) {
-        root.style.transform = 'translateX(-30%)';
+        under.style.transform = 'translateX(-30%)';
         dim.style.opacity = '1';
       }
       return;
@@ -265,46 +284,46 @@
     } else {
       const o = { duration: 360, easing: EASE_PUSH };
       tween(page, { transform: 'translateX(100%)' }, { transform: 'translateX(0)' }, o);
-      tween(root, { transform: 'translateX(0)' }, { transform: 'translateX(-30%)' }, o);
+      tween(under, { transform: 'translateX(0)' }, { transform: 'translateX(-30%)' }, o);
       tween(dim, { opacity: 0 }, { opacity: 1 }, o);
     }
     page.querySelector('.iz-back').focus({ preventScroll: true });
   }
 
-  function closeTeam(tab, { progress = 0, opts = null, instant = false } = {}) {
-    const teamId = teams[tab];
-    delete teams[tab];
-    const i = opened.indexOf(tab);
+  function closeTop(tab, { progress = 0, opts = null, instant = false } = {}) {
+    const entry = stacks[tab].pop();
+    const i = opened.lastIndexOf(tab);
     if (i >= 0) opened.splice(i, 1);
-    const page = nav && teamPage(tab);
+    const page = nav && topPage(tab);
     if (!page) return;
-    const root = nav.roots[tab];
-    const dim = root.querySelector('.iz-dim');
-    root.inert = false;
+    const under = page.previousElementSibling;
+    const dim = dimOf(under);
+    under.inert = false;
     const done = () => {
       page.remove();
-      root.style.transform = '';
+      under.style.transform = '';
       dim.style.opacity = '';
       if (tab !== ui.tab) return;
       const opener = openers.get(page);
-      (opener?.isConnected ? opener : root.querySelector(`[data-action="team"][data-team="${teamId}"]`))?.focus({ preventScroll: true });
+      const fallback = entry.kind === 'team' ? `[data-action="team"][data-team="${entry.id}"]` : `[data-action="match"][data-match="${entry.id}"]`;
+      (opener?.isConnected ? opener : under.querySelector(fallback))?.focus({ preventScroll: true });
     };
     if (instant || tab !== ui.tab) return done();
     if (REDUCED.matches) {
-      root.style.transform = '';
+      under.style.transform = '';
       dim.style.opacity = '0';
       tween(page, { opacity: 1 }, { opacity: 0 }, { duration: 150, easing: 'linear' }).then(done);
       return;
     }
     const o = opts || { duration: 300, easing: EASE_PUSH };
     tween(page, { transform: `translateX(${progress * 100}%)` }, { transform: 'translateX(100%)' }, o).then(done);
-    tween(root, { transform: `translateX(${-30 * (1 - progress)}%)` }, { transform: 'translateX(0)' }, o);
+    tween(under, { transform: `translateX(${-30 * (1 - progress)}%)` }, { transform: 'translateX(0)' }, o);
     tween(dim, { opacity: 1 - progress }, { opacity: 0 }, o);
   }
 
   function back(tab, anim) {
-    closeTeam(tab, anim);
-    if (history.state?.izTeam) {
+    closeTop(tab, anim);
+    if (history.state?.izPage) {
       skipPop++;
       history.back();
     }
@@ -315,17 +334,17 @@
       skipPop--;
       return;
     }
-    const tab = teams[ui.tab] ? ui.tab : opened[opened.length - 1];
-    if (tab) closeTeam(tab);
+    const tab = stacks[ui.tab].length ? ui.tab : opened.at(-1);
+    if (tab) closeTop(tab);
   });
 
   // Ana ekrandaki uygulamada tarayıcının geri hareketi yok; sol kenardan sürükleyince takım sayfası kapanır.
   let drag = null;
   let suppressClick = false;
   view.addEventListener('pointerdown', (e) => {
-    if (!INSTALLED.matches || !nav || !teams[ui.tab] || e.clientX > 24) return;
+    if (!INSTALLED.matches || !nav || !stacks[ui.tab].length || e.clientX > 24) return;
     const page = e.target.closest('.iz-page.is-pushed');
-    if (page) drag = { page, root: nav.roots[ui.tab], x0: e.clientX, x: e.clientX, t: e.timeStamp, v: 0, p: 0, active: false, id: e.pointerId };
+    if (page && page === topPage(ui.tab)) drag = { page, under: page.previousElementSibling, x0: e.clientX, x: e.clientX, t: e.timeStamp, v: 0, p: 0, active: false, id: e.pointerId };
   });
   view.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -333,15 +352,15 @@
       if (e.clientX - drag.x0 < 6) return;
       drag.active = true;
       view.setPointerCapture(e.pointerId);
-      for (const el of [drag.page, drag.root, drag.root.querySelector('.iz-dim')]) el.getAnimations().forEach((a) => a.cancel());
+      for (const el of [drag.page, drag.under, dimOf(drag.under)]) el.getAnimations().forEach((a) => a.cancel());
     }
     drag.v = (e.clientX - drag.x) / Math.max(1, e.timeStamp - drag.t);
     drag.x = e.clientX;
     drag.t = e.timeStamp;
     drag.p = Math.min(1, Math.max(0, (e.clientX - drag.x0) / window.innerWidth));
     drag.page.style.transform = `translateX(${drag.p * 100}%)`;
-    drag.root.style.transform = `translateX(${-30 * (1 - drag.p)}%)`;
-    drag.root.querySelector('.iz-dim').style.opacity = String(1 - drag.p);
+    drag.under.style.transform = `translateX(${-30 * (1 - drag.p)}%)`;
+    dimOf(drag.under).style.opacity = String(1 - drag.p);
   });
   function endDrag() {
     const d = drag;
@@ -355,8 +374,8 @@
     }
     const o = { duration: 240, easing: EASE };
     tween(d.page, { transform: `translateX(${d.p * 100}%)` }, { transform: 'translateX(0)' }, o);
-    tween(d.root, { transform: `translateX(${-30 * (1 - d.p)}%)` }, { transform: 'translateX(-30%)' }, o);
-    tween(d.root.querySelector('.iz-dim'), { opacity: 1 - d.p }, { opacity: 1 }, o);
+    tween(d.under, { transform: `translateX(${-30 * (1 - d.p)}%)` }, { transform: 'translateX(-30%)' }, o);
+    tween(dimOf(d.under), { opacity: 1 - d.p }, { opacity: 1 }, o);
   }
   view.addEventListener('pointerup', endDrag);
   view.addEventListener('pointercancel', endDrag);
@@ -472,10 +491,22 @@
       selectTab(el.dataset.tab);
     },
     team(el) {
-      openTeam(el.dataset.team, el);
+      openPage({ kind: 'team', id: el.dataset.team }, el);
+    },
+    match(el) {
+      if (nav) return openPage({ kind: 'match', id: el.dataset.match }, el);
+      ui.sheetMatch = el.dataset.match;
+      renderSheet();
+      sheet.querySelector('[data-action="sheet-back"]')?.focus({ preventScroll: true });
+    },
+    'sheet-back'() {
+      const id = ui.sheetMatch;
+      ui.sheetMatch = null;
+      renderSheet();
+      sheet.querySelector(`[data-action="match"][data-match="${id}"]`)?.focus({ preventScroll: true });
     },
     back() {
-      if (teams[ui.tab]) back(ui.tab);
+      if (stacks[ui.tab].length) back(ui.tab);
     },
     'push-toggle': togglePush,
   };
@@ -495,7 +526,7 @@
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !sheet.open && nav && teams[ui.tab]) back(ui.tab);
+    if (e.key === 'Escape' && !sheet.open && nav && stacks[ui.tab].length) back(ui.tab);
   });
 
   sheet.addEventListener('cancel', (e) => {

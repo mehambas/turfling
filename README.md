@@ -23,7 +23,14 @@ Aynı tarayıcıda açık olduğu sürece skorlar anlık güncellenir. Ses yaln�
 - Eleme maçları berabere biterse penaltı sonucu girilir.
 
 Toplam ≈ 1 sa 52 dk. Süre yetmezse playoff tek tıkla kaldırılabilir; final o zaman lig 1.si – 2.si olur (≈ 1 sa 40 dk).
+Final de kaldırılabilir (*Kurulum → Süreler → Final* ya da fikstürde *Kaldır*); o zaman playoff da oynanmaz ve lig bitince puan durumunda 1. olan takım şampiyon olur (≈ 1 sa 22 dk).
+Birinciler her şeyiyle eşitse şampiyon penaltı ya da yazı-tura ile belirlenir.
 Devre sayısı, maç süreleri, değişim ve ara süreleri *Kurulum* sekmesinden değiştirilebilir.
+
+## Maç özeti
+
+Biten bir maçın skoruna dokununca özeti açılır: kim kaç gol attı, hangi dakikada, gol sırasıyla ara skorlar, penaltılar ve sonuç.
+Yönetim ekranında Fikstür'den, izleyici sayfasında Fikstür sekmesinden, takım sayfasından ve "Son maç" kartından açılır; TV'de Fikstür penceresinden.
 
 ## Kısayollar
 

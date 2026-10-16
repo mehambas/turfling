@@ -17,12 +17,13 @@ function at(h, m) {
   return d.getTime();
 }
 
-function setup({ rounds = 2, playoff = true } = {}) {
+function setup({ rounds = 2, playoff = true, final = true } = {}) {
   const s = T.createState();
   T.addPlayers(s, Array.from({ length: 15 }, (_, i) => `Oyuncu ${i + 1}`));
   T.applyDraw(s, seeded(1));
   s.settings.leagueRounds = rounds;
   s.settings.playoffEnabled = playoff;
+  s.settings.finalEnabled = final;
   s.matches = T.generateMatches(s.settings);
   s.started = true;
   return s;
@@ -189,6 +190,45 @@ test('playoff kapalıysa final lig 1.si - 2.si', () => {
   assert.equal(T.activeMatches(s).length, 7);
 });
 
+test('final kapalıysa playoff da oynanmaz; lig bitince 1. şampiyon, final geri eklenirse final belirler', () => {
+  const s = setup({ final: false });
+  assert.deepEqual(T.activeMatches(s).map((m) => m.id), ['L1', 'L2', 'L3', 'L4', 'L5', 'L6']);
+  assert.equal(T.hasPlayoff(s.settings), false, 'playoff ayarı açık kalsa da final yoksa oynanmaz');
+  play(s, 'L1', 2, 0);
+  play(s, 'L2', 0, 1);
+  play(s, 'L3', 2, 1);
+  play(s, 'L4', 0, 1);
+  play(s, 'L5', 1, 0);
+  assert.equal(T.champion(s), null, 'lig bitmeden şampiyon yok');
+  play(s, 'L6', 1, 1);
+  assert.deepEqual(order(s), ['A', 'B', 'C']);
+  assert.equal(T.champion(s), 'A');
+  s.settings.finalEnabled = true;
+  T.resolveKnockouts(s);
+  assert.equal(T.champion(s), null);
+  assert.deepEqual(T.activeMatches(s).map((m) => m.id).slice(-2), ['PO', 'F']);
+  assert.deepEqual(['B', 'C'], [s.matches.find((m) => m.id === 'PO').home, s.matches.find((m) => m.id === 'PO').away]);
+});
+
+test('final kapalıyken 1.likte tam eşitlik kurayla çözülür; 2. ile 3. arasındaki eşitlik önemsiz', () => {
+  const s = setup({ rounds: 1, final: false });
+  play(s, 'L1', 1, 0);
+  play(s, 'L2', 1, 0);
+  play(s, 'L3', 1, 0);
+  assert.equal(T.blockingTies(s).length, 1);
+  assert.equal(T.champion(s), null);
+  s.lots = { A: 0.9, B: 0.1, C: 0.5 };
+  assert.equal(T.champion(s), 'B');
+
+  const t = setup({ rounds: 1, final: false });
+  play(t, 'L1', 1, 0);
+  play(t, 'L2', 0, 1);
+  play(t, 'L3', 1, 1);
+  assert.deepEqual(T.computeStandings(t).unresolved, [['B', 'C']]);
+  assert.equal(T.blockingTies(t).length, 0);
+  assert.equal(T.champion(t), 'A');
+});
+
 test('saat: duraklatma süreyi dondurur', () => {
   const s = setup();
   const m = s.matches[0];
@@ -211,6 +251,11 @@ test('zaman planı: varsayılan format 1 sa 52 dk, playoffsuz 1 sa 40 dk', () =>
   s.settings.playoffEnabled = false;
   const sc2 = T.schedule(s, at(19, 0));
   assert.equal((sc2.plannedEnd - sc2.start) / MIN, 100);
+  s.settings.finalEnabled = false;
+  const sc3 = T.schedule(s, at(19, 0));
+  assert.equal((sc3.plannedEnd - sc3.start) / MIN, 82);
+  assert.equal(sc3.items.length, 6);
+  assert.deepEqual(T.playTimeRange(s.settings), [48, 48]);
 });
 
 test('zaman planı: gece yarısını geçen saha saati doğru güne düşer', () => {

@@ -1,3 +1,5 @@
+import Tournament from '../../js/tournament.js';
+
 const name = (list, id) => (Array.isArray(list) ? list.find((x) => x?.id === id)?.name : null);
 
 // Yalnız canlı maçta yeni çıkan goller bildirilir; bitmiş bir maçın düzeltilmesi ya da yayının ilk hâli bildirim değildir.
@@ -23,12 +25,26 @@ export function goalNotices(before, after) {
   return notices;
 }
 
+// Final yoksa şampiyon lig bitince ya da eşitlik kurayla çözülünce belli olur.
+function leagueChampion(state) {
+  try {
+    if (state?.settings?.finalEnabled !== false) return null;
+    const s = Tournament.migrate(state);
+    const id = Tournament.champion(s);
+    return id ? { id, pts: Tournament.computeStandings(s, { includeLive: false }).rows[0].pts } : null;
+  } catch {
+    return null;
+  }
+}
+
 // Canlıyken biten maç bildirilir; iptal edilen ya da sonradan düzeltilen maç değil.
-// Final bir kazananla bittiyse iki bildirim yerine yalnız şampiyon bildirilir.
+// Final bir kazananla bittiyse iki bildirim yerine yalnız şampiyon bildirilir; final yoksa ligin son maçı için de öyle.
 export function resultNotices(before, after) {
   if (!before) return [];
   const wasLive = new Set(before.matches.filter((m) => m?.status === 'live').map((m) => m.id));
   const team = (id) => name(after.teams, id) ?? id;
+  const champ = leagueChampion(before) ? null : leagueChampion(after);
+  let leagueLine = null;
   const notices = [];
   for (const m of after.matches) {
     if (m?.status !== 'done' || !wasLive.has(m.id) || !m.home || !m.away) continue;
@@ -43,7 +59,12 @@ export function resultNotices(before, after) {
     const [a, b] = home !== away || !pens ? [home, away] : [pens.home, pens.away];
     const winner = a > b ? m.home : b > a ? m.away : null;
     if (m.stage === 'final' && winner) notices.push({ title: `Şampiyon: ${team(winner)}`, body: `Final · ${line}` });
+    else if (champ && m.stage === 'league') leagueLine = line;
     else notices.push({ title: 'Maç bitti', body: line });
+  }
+  if (champ) {
+    const standing = `Ligi ${champ.pts} puanla birinci bitirdi`;
+    notices.push({ title: `Şampiyon: ${team(champ.id)}`, body: leagueLine ? `${standing} · Son maç: ${leagueLine}` : standing });
   }
   return notices;
 }

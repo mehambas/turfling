@@ -136,19 +136,30 @@
   const TIMES = { 1: 'bir', 2: 'iki', 3: 'üç' };
 
   function rulesText(s) {
-    const po = !!s.playoffEnabled;
+    const fin = T.hasFinal(s);
+    const po = T.hasPlayoff(s);
     const r = s.leagueRounds;
-    const steps = [{ key: 'league', name: 'Lig', min: s.leagueMin, who: `Herkes herkesle ${TIMES[r] || r} kez oynar` }];
+    const who = `Herkes herkesle ${TIMES[r] || r} kez oynar`;
+    const steps = [{ key: 'league', name: 'Lig', min: s.leagueMin, who: fin ? who : `${who}, 1.si şampiyon` }];
     if (po) steps.push({ key: 'playoff', name: 'Playoff', min: s.playoffMin, who: 'Lig 2.si – 3.sü' });
-    steps.push({ key: 'final', name: 'Final', min: s.finalMin, who: po ? 'Lig 1.si – playoff galibi' : 'Lig 1.si – 2.si' });
+    if (fin) steps.push({ key: 'final', name: 'Final', min: s.finalMin, who: po ? 'Lig 1.si – playoff galibi' : 'Lig 1.si – 2.si' });
+    const points = 'Galibiyet 3, beraberlik 1, mağlubiyet 0 puan';
     return {
       steps,
       summary: steps.map((x) => x.name).join(' › '),
       meta: `${r > 1 ? `${r} devre, ` : ''}${r * 3} maç · her maçta bir takım dinlenir`,
-      draw: `Ligde öyle kalır; ${po ? 'playoff ve finalde' : 'finalde'} penaltı.`,
-      tvLine: `Galibiyet 3, beraberlik 1, mağlubiyet 0 puan · ${po ? 'Playoff ve finalde' : 'Finalde'} beraberlikte penaltı`,
+      draw: fin ? `Ligde öyle kalır; ${po ? 'playoff ve finalde' : 'finalde'} penaltı.` : 'Öyle kalır, iki takım da 1 puan alır.',
+      tvLine: fin ? `${points} · ${po ? 'Playoff ve finalde' : 'Finalde'} beraberlikte penaltı` : `${points} · Final yok, lig 1.si şampiyon`,
     };
   }
+
+  function standingZones(s) {
+    if (!T.hasFinal(s)) return { zones: ['final', 'out', 'out'], note: '1. şampiyon olur' };
+    if (T.hasPlayoff(s)) return { zones: ['final', 'playoff', 'playoff'], note: '1. finale direkt · 2. ve 3. playoff' };
+    return { zones: ['final', 'final', 'out'], note: '1. ve 2. finalde' };
+  }
+
+  const RANKS = ['1.si', '2.si', '3.sü'];
 
   // Kutu yerinde açılıp kapanır: yeniden çizim geçişi yarıda keserdi. Sonraki çizim aynı hâli zaten üretir.
   function toggleRules(btn) {
@@ -254,6 +265,7 @@
     const liveMatch = () => getState().matches.find((m) => m.status === 'live') || null;
     const nextMatch = () => T.activeMatches(getState()).find((m) => m.status === 'pending') || null;
     const findStage = (stage, list = getState().matches) => list.find((m) => m.stage === stage) || null;
+    const match = (id) => getState().matches.find((m) => m.id === id) || null;
     const estimates = (st) => Object.fromEntries(T.schedule(st).items.map((i) => [i.id, i]));
     const tournamentName = () => getState()?.name.trim() || DEFAULT_NAME;
 
@@ -289,7 +301,7 @@
     function placeholder(m, side) {
       if (m.stage === 'playoff') return side === 'home' ? 'Lig 2.si' : 'Lig 3.sü';
       if (side === 'home') return 'Lig 1.si';
-      return getState().settings.playoffEnabled ? 'Playoff galibi' : 'Lig 2.si';
+      return T.hasPlayoff(getState().settings) ? 'Playoff galibi' : 'Lig 2.si';
     }
 
     function teamName(id, m, side, { cls = '', end = false } = {}) {
@@ -315,19 +327,121 @@
         .join(' · ');
     }
 
+    // Golcüsü sonradan girilen golün dakikası yoktur; o goller sona dizilir.
+    function matchEvents(m) {
+      let home = 0;
+      let away = 0;
+      return m.goals
+        .map((g, i) => ({ g, i }))
+        .filter(({ g }) => g.team === m.home || g.team === m.away)
+        .sort((a, b) => (a.g.ms ?? Infinity) - (b.g.ms ?? Infinity) || a.i - b.i)
+        .map(({ g }) => {
+          const side = g.team === m.home ? 'home' : 'away';
+          if (side === 'home') home++;
+          else away++;
+          return { g, side, home, away };
+        });
+    }
+
+    function scorerName(g) {
+      const p = player(g.playerId);
+      return p ? `${esc(p.name)}${g.ownGoal ? ' (k.k.)' : ''}` : 'Bilinmiyor';
+    }
+
+    function sideScorers(events, side) {
+      const rows = new Map();
+      for (const e of events.filter((x) => x.side === side)) {
+        const key = player(e.g.playerId) ? `${e.g.playerId}${e.g.ownGoal ? ':kk' : ''}` : '';
+        if (!rows.has(key)) rows.set(key, { g: e.g, count: 0, minutes: [] });
+        const row = rows.get(key);
+        row.count++;
+        if (e.g.ms != null) row.minutes.push(goalMinute(e.g));
+      }
+      return [...rows.values()]
+        .map(({ g, count, minutes }) => {
+          const extra = minutes.length < count ? ` ×${count}` : '';
+          return `<li${player(g.playerId) ? '' : ' class="is-unknown"'}>${scorerName(g)}${extra}${minutes.length ? ` <span class="ms-min">${minutes.join(', ')}</span>` : ''}</li>`;
+        })
+        .join('');
+    }
+
+    function outcomeText(m) {
+      if (m.status !== 'done') return '';
+      const w = T.winnerOf(m);
+      if (!w) return 'Berabere';
+      const name = esc(team(w)?.name);
+      const how = m.pens ? ' penaltılarla' : '';
+      if (m.stage === 'final') return `${name}${how} şampiyon oldu`;
+      if (m.stage === 'playoff') return `${name}${how} finale çıktı`;
+      return `${name} kazandı`;
+    }
+
+    function renderMatchSummary(id, { links = false, titleId = '' } = {}) {
+      const m = match(id);
+      if (!m) return '';
+      const state = getState();
+      const s = T.score(m);
+      const w = T.winnerOf(m);
+      const events = matchEvents(m);
+      const played = m.status !== 'pending';
+      const side = (k) => {
+        const t = team(m[k]);
+        const cls = w ? (w === m[k] ? ' is-win' : ' is-lose') : '';
+        const name = t ? `${swatch(t, { big: true })}<span class="tn-name">${esc(t.name)}</span>` : `<span class="tn-name">${placeholder(m, k)}</span>`;
+        const head = t && links ? `<button class="ms-tn" data-action="team" data-team="${t.id}">${name}</button>` : `<span class="ms-tn">${name}</span>`;
+        const scorers = sideScorers(events, k);
+        return `<div class="ms-team ms-${k}${cls}${t ? '' : ' is-tbd'}"${t ? ` style="${teamStyle(t)}"` : ''}>${head}${scorers ? `<ol class="ms-scorers">${scorers}</ol>` : ''}</div>`;
+      };
+      let when = '';
+      if (m.status === 'done') when = `${fmtTime(m.startedAt)} – ${fmtTime(m.endedAt)} · ${T.matchMinutes(state, m)} dk`;
+      else if (m.status === 'live') when = '<span class="tag-live">Canlı</span>';
+      else when = 'Henüz oynanmadı';
+      const label = played ? `Skor: ${esc(team(m.home)?.name)} ${s.home}, ${esc(team(m.away)?.name)} ${s.away}` : 'Henüz oynanmadı';
+      const score = played ? `<span>${s.home}</span><span class="ms-dash">–</span><span>${s.away}</span>` : '<span class="ms-dash">–</span>';
+      const outcome = outcomeText(m);
+      const timeline = events
+        .map((e) => {
+          const cell = `<span class="ms-who">${scorerName(e.g)}</span><span class="ms-min">${goalMinute(e.g) || '–'}</span>`;
+          const run = e.side === 'home' ? `<b>${e.home}</b>–${e.away}` : `${e.home}–<b>${e.away}</b>`;
+          return `<li class="ms-ev is-${e.side}${player(e.g.playerId) ? '' : ' is-unknown'}" style="${teamStyle(team(e.g.team))}">
+            <span class="ms-ev-home">${e.side === 'home' ? cell : ''}</span><span class="ms-ev-score">${run}</span><span class="ms-ev-away">${e.side === 'away' ? cell : ''}</span>
+          </li>`;
+        })
+        .join('');
+      let goals = '';
+      if (played) {
+        goals = `<section class="ms-card" aria-label="Goller"><h3 class="ms-h">Goller</h3>${timeline ? `<ol class="ms-tl">${timeline}</ol>` : '<p class="ms-none">Gol yok</p>'}</section>`;
+      }
+      return `<div class="ms">
+        <div class="ms-top"><h2 class="ms-kicker"${titleId ? ` id="${titleId}"` : ''}>${watchKicker(m)}</h2><span class="ms-when">${when}</span></div>
+        <div class="ms-board">${side('home')}<div class="ms-score" role="img" aria-label="${label}">${score}</div>${side('away')}</div>
+        ${m.pens ? `<p class="ms-pens">Penaltılar ${m.pens.home}–${m.pens.away}</p>` : ''}
+        ${outcome ? `<p class="ms-outcome">${outcome}</p>` : ''}
+        ${goals}
+      </div>`;
+    }
+
     function championData(id) {
+      const state = getState();
       const t = team(id);
       const fin = findStage('final');
       const players = t.playerIds.map(player).filter(Boolean).map((p) => `<span>${esc(p.name)}</span>`).join('');
-      const { list } = T.topScorers(getState());
+      const { list } = T.topScorers(state);
       const best = list.filter((x) => x.goals === list[0]?.goals);
-      return { t, fin, players, best };
+      const line = T.hasFinal(state.settings) ? `Final: ${lastResult(fin)}` : `Ligi ${T.computeStandings(state, { includeLive: false }).rows[0].pts} puanla birinci bitirdi`;
+      return { t, players, best, line };
+    }
+
+    // Final yoksa lig bitince şampiyon belli olur; puanlar her şeyiyle eşitse önce kura gerekir.
+    function awaitingChampion() {
+      const state = getState();
+      return !T.hasFinal(state.settings) && T.blockingTies(state).length > 0;
     }
 
     function renderStandings() {
       const state = getState();
       const { rows, unresolved } = T.computeStandings(state);
-      const zones = state.settings.playoffEnabled ? ['final', 'playoff', 'playoff'] : ['final', 'final', 'out'];
+      const { zones, note } = standingZones(state.settings);
       const tied = new Set(T.leagueDone(state) ? unresolved.flat() : []);
       const gd = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
       return `<section class="card side-card" aria-labelledby="h-table">
@@ -345,7 +459,7 @@
           })
           .join('')}</tbody>
       </table>
-      <p class="card-note">${state.settings.playoffEnabled ? '1. finale direkt · 2. ve 3. playoff' : '1. ve 2. finalde'}</p>
+      <p class="card-note">${note}</p>
     </section>`;
     }
 
@@ -425,6 +539,9 @@
 
     function screenBreak(est) {
       const m = nextMatch();
+      if (!m && awaitingChampion()) {
+        return `<div class="tv-center"><span class="tv-kicker">Lig bitti</span><div class="tv-big">Şampiyon belirleniyor</div><span class="tv-sub">${TIE_TEXT}</span></div>`;
+      }
       if (!m) return '<div class="tv-center"><span class="tv-sub">Sıradaki maç bekleniyor</span></div>';
       const last = lastFinished();
       const it = est[m.id];
@@ -438,12 +555,12 @@
     }
 
     function screenChampion(id) {
-      const { t, fin, players, best } = championData(id);
+      const { t, players, best, line } = championData(id);
       return `<div class="tv-center" style="${teamStyle(t)}">
       <span class="champ-icon tv-trophy">${ICONS.trophy}</span>
       <span class="tv-kicker">Şampiyon</span>
       <div class="tv-big"><span class="tv-tn">${swatch(t, { big: true })}${esc(t.name)}</span></div>
-      <span class="tv-sub">Final: ${lastResult(fin)}</span>
+      <span class="tv-sub">${line}</span>
       <div class="champ-players tv-players">${players}</div>
       ${best.length ? `<span class="tv-last">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</span>` : ''}
     </div>`;
@@ -496,6 +613,7 @@
     </div>`;
     }
 
+    const TIE_TEXT = 'Puanlar her şeyiyle eşit: penaltı ya da yazı-tura';
     const SYNC_PILL = '<span class="iz-pill is-sync" role="status">Güncelleniyor…</span>';
     const AWAY_TEXT = 'Organizatörün cihazı bağlı değil, skor gecikebilir';
 
@@ -527,7 +645,7 @@
         body = watchChampion(T.champion(state)) + watchTeams(links);
       } else {
         if (lastFinished()) pill = '<span class="iz-pill">Maç arası</span>';
-        body = watchBreak(estimates(state)) + watchTeams(links);
+        body = watchBreak(estimates(state), links) + watchTeams(links);
         layout = ' is-break';
       }
       return `<div class="iz">
@@ -607,8 +725,9 @@
       </section>`;
     }
 
-    function watchBreak(est) {
+    function watchBreak(est, links = false) {
       const m = nextMatch();
+      if (!m && awaitingChampion()) return watchHero('Lig bitti', 'Şampiyon belirleniyor', TIE_TEXT);
       if (!m) return watchHero('', 'Sıradaki maç bekleniyor', '');
       const last = lastFinished();
       const it = est[m.id];
@@ -616,10 +735,10 @@
       return `<span class="iz-kicker">Sıradaki · ${matchTitle(m)}</span>
       <div class="iz-vs">${screenTeam(m, 'home')}<span class="iz-vs-dash" aria-hidden="true">–</span>${screenTeam(m, 'away')}</div>
       ${it ? `<div class="iz-eta"><span>Tahmini başlama</span>${day ? `<span class="iz-eta-day">${day}</span>` : ''}<strong>${fmtTime(it.estStart)}</strong><span>${T.matchMinutes(getState(), m)} dakikalık maç</span></div>` : ''}
-      ${last ? watchLast(last) : ''}`;
+      ${last ? watchLast(last, links) : ''}`;
     }
 
-    function watchLast(m) {
+    function watchLast(m, links = false) {
       const s = T.score(m);
       const w = T.winnerOf(m);
       const side = (k) => {
@@ -628,34 +747,46 @@
         return `<span class="tv-tn${cls}" style="${teamStyle(t)}">${swatch(t)}${esc(t?.name)}</span>`;
       };
       const goals = goalList(m);
-      return `<section class="iz-last" aria-label="Son maç">
-        <span class="iz-last-head">Son maç · ${matchTitle(m)}</span>
-        <div class="iz-last-row">${side('home')}<span class="iz-last-score">${s.home} – ${s.away}</span>${side('away')}</div>
+      const inner = `<span class="iz-last-head"><span>Son maç · ${matchTitle(m)}</span>${links ? `<span class="iz-last-go">Maç özeti${ICONS.forward}</span>` : ''}</span>
+        <span class="iz-last-row">${side('home')}<span class="iz-last-score">${s.home} – ${s.away}</span>${side('away')}</span>
         ${m.pens ? `<span class="iz-last-note">Penaltılar ${m.pens.home}–${m.pens.away}</span>` : ''}
-        ${goals ? `<span class="iz-last-note">${goals}</span>` : ''}
-      </section>`;
+        ${goals ? `<span class="iz-last-note">${goals}</span>` : ''}`;
+      if (links) return `<button class="iz-last" data-action="match" data-match="${m.id}" aria-label="Son maç özeti: ${lastResult(m)}">${inner}</button>`;
+      return `<section class="iz-last" aria-label="Son maç">${inner}</section>`;
     }
 
     function watchChampion(id) {
-      const { t, fin, players, best } = championData(id);
+      const { t, players, best, line } = championData(id);
       return `<div class="iz-hero" style="${teamStyle(t)}">
         <span class="champ-icon">${ICONS.trophy}</span>
         <span class="iz-hero-kicker">Şampiyon</span>
         <h1 class="iz-hero-title iz-champ">${swatch(t, { big: true })}${esc(t.name)}</h1>
-        <p class="iz-hero-sub">Final: ${lastResult(fin)}</p>
+        <p class="iz-hero-sub">${line}</p>
         <div class="champ-players">${players}</div>
         ${best.length ? `<p class="iz-hero-note">Gol kralı: ${best.map((b) => esc(b.name)).join(', ')} · ${best[0].goals} gol</p>` : ''}
       </div>`;
     }
 
-    function renderSheet({ scorersOpen = false, rulesOpen = false } = {}) {
+    function renderSheet({ scorersOpen = false, rulesOpen = false, matchId = null } = {}) {
       const state = getState();
       if (!state?.started) return '';
+      const summary = matchId && match(matchId)?.status === 'done' ? renderMatchSummary(matchId, { titleId: 'iz-sheet-title' }) : '';
       const live = liveMatch();
       let peek = esc(tournamentName());
       if (live) {
         const s = T.score(live);
         peek = `${esc(team(live.home).name)} <strong>${s.home} – ${s.away}</strong> ${esc(team(live.away).name)} · <span data-timer></span>`;
+      }
+      if (summary) {
+        return `<div class="iz-peek" data-action="sheet-close" aria-hidden="true"><span>${peek}</span></div>
+        <section class="iz-sheet is-match">
+          <span class="iz-grip" aria-hidden="true"></span>
+          <div class="iz-sheet-head">
+            <button class="iz-sheet-back" data-action="sheet-back">${ICONS.back}Fikstür</button>
+            <button class="iz-close" data-action="sheet-close" aria-label="Kapat">${ICONS.x}</button>
+          </div>
+          ${summary}
+        </section>`;
       }
       return `<div class="iz-peek" data-action="sheet-close" aria-hidden="true"><span>${peek}</span></div>
       <section class="iz-sheet">
@@ -679,7 +810,7 @@
     function rulesFlow(r) {
       const steps = r.steps.map(
         (x, i) => `${i ? `<li class="iz-flow-arrow" aria-hidden="true">${ICONS.forward}</li>` : ''}<li class="iz-step">
-          <span class="iz-step-name">${x.name}${x.key === 'final' ? ICONS.trophy : ''}</span>
+          <span class="iz-step-name">${x.name}${i === r.steps.length - 1 ? ICONS.trophy : ''}</span>
           <span class="iz-step-min">${x.min}<small>dk</small></span>
           <span class="iz-step-who">${x.who}</span>
         </li>`,
@@ -751,8 +882,9 @@
     function watchFixtures({ links = false } = {}) {
       const state = getState();
       const est = estimates(state);
+      const active = new Set(T.activeMatches(state));
       const groups = fixtureGroups(state)
-        .map((g) => ({ ...g, matches: g.matches.filter((m) => m.stage !== 'playoff' || state.settings.playoffEnabled) }))
+        .map((g) => ({ ...g, matches: g.matches.filter((m) => active.has(m)) }))
         .filter((g) => g.matches.length);
       if (links) {
         return groups
@@ -762,6 +894,11 @@
       return `<div class="iz-fx">${groups
         .map((g) => `<section class="iz-fx-group" aria-label="${g.title}"><h3 class="iz-fx-title">${g.title}</h3>${g.matches.map((m) => watchFixtureRow(m, est[m.id])).join('')}</section>`)
         .join('')}</div>`;
+    }
+
+    // Düğme ::after ile bütün satırı kaplar; satırdaki takım düğmeleri onun üstünde kalır.
+    function summaryButton(m, cls, inner) {
+      return `<button class="${cls} row-hit" data-action="match" data-match="${m.id}" aria-label="${matchTitle(m)} özeti: ${lastResult(m)}">${inner}</button>`;
     }
 
     function watchFixtureRow(m, it, links = false) {
@@ -782,10 +919,9 @@
         time = fmtTime(m.startedAt);
         score = `${s.home}–${s.away}${m.pens ? `<small>pen. ${m.pens.home}–${m.pens.away}</small>` : ''}`;
       }
-      const scoreEl =
-        links && m.status === 'live'
-          ? `<button class="iz-fx-score" data-action="tab" data-tab="mac" aria-label="Canlı maça git">${score}</button>`
-          : `<span class="iz-fx-score">${score}</span>`;
+      let scoreEl = `<span class="iz-fx-score">${score}</span>`;
+      if (links && m.status === 'live') scoreEl = `<button class="iz-fx-score" data-action="tab" data-tab="mac" aria-label="Canlı maça git">${score}</button>`;
+      else if (m.status === 'done') scoreEl = summaryButton(m, 'iz-fx-score', score);
       return `<div class="iz-fx-row is-${m.status}">
         <span class="iz-fx-time">${time}</span>${side('home')}${scoreEl}${side('away')}
       </div>`;
@@ -822,7 +958,7 @@
     function renderStandingsPage() {
       const state = getState();
       const { rows, unresolved } = T.computeStandings(state);
-      const zones = state.settings.playoffEnabled ? ['final', 'playoff', 'playoff'] : ['final', 'final', 'out'];
+      const { zones, note: zoneNote } = standingZones(state.settings);
       const done = T.leagueDone(state);
       const tied = new Set(done ? unresolved.flat() : []);
       const current = state.matches.find((m) => m.stage === 'league' && m.status !== 'done');
@@ -838,7 +974,7 @@
         })
         .join('');
       const liveLeague = liveMatch()?.stage === 'league';
-      const note = `${state.settings.playoffEnabled ? '1. finale direkt · 2. ve 3. playoff' : '1. ve 2. finalde'}${liveLeague ? ' · canlı maç anlık skorla dahil' : ''}`;
+      const note = `${zoneNote}${liveLeague ? ' · canlı maç anlık skorla dahil' : ''}`;
       const { list } = T.topScorers(state);
       const kings = list.length ? `<ol class="iz-kings-list">${scorerRows(list, { withTeam: true })}</ol>` : '<p class="iz-card-note">Henüz gol yok</p>';
       return `${pageHead('Puan', sub)}<div class="iz-stack">
@@ -856,8 +992,13 @@
       const state = getState();
       const champ = T.champion(state);
       const fin = findStage('final');
-      const po = state.settings.playoffEnabled ? findStage('playoff') : null;
-      if (champ === id) return ['Şampiyon', `Final: ${lastResult(fin)}`];
+      const po = T.hasPlayoff(state.settings) ? findStage('playoff') : null;
+      if (champ === id) return ['Şampiyon', championData(id).line];
+      if (champ && !T.hasFinal(state.settings)) {
+        const { rows } = T.computeStandings(state, { includeLive: false });
+        const pos = rows.findIndex((r) => r.team === id);
+        return [`Lig ${RANKS[pos]}`, `${rows[pos].pts} puan`];
+      }
       if (champ && (fin.home === id || fin.away === id)) return ['Finalist', `Final: ${lastResult(fin)}`];
       if (po?.status === 'done' && (po.home === id || po.away === id)) return ["Playoff'ta elendi", `Playoff: ${lastResult(po)}`];
       return [champ ? 'Turnuva bitti' : 'Maçları bitti', ''];
@@ -909,12 +1050,16 @@
           }
           const time = m.status === 'live' ? '<span class="tag-live">Canlı</span>' : m.status === 'done' ? fmtTime(m.startedAt) : fmtTime(est[m.id]?.estStart);
           const score = m.status === 'pending' ? '–' : `${us}–${them}${m.pens ? '<small>pen.</small>' : ''}`;
-          return `<li class="is-${m.status}"><span class="iz-tm-time">${time}<small>${matchTitle(m)}</small></span><span class="iz-tm-opp" style="${teamStyle(opp)}">${swatch(opp)}<span class="tn-name">${esc(opp.name)}</span></span><span class="iz-tm-score">${score}</span>${res}</li>`;
+          const scoreEl = m.status === 'done' ? summaryButton(m, 'iz-tm-score', score) : `<span class="iz-tm-score">${score}</span>`;
+          return `<li class="is-${m.status}"><span class="iz-tm-time">${time}<small>${matchTitle(m)}</small></span><span class="iz-tm-opp" style="${teamStyle(opp)}">${swatch(opp)}<span class="tn-name">${esc(opp.name)}</span></span>${scoreEl}${res}</li>`;
         })
         .join('');
-      const elim = T.leagueDone(state)
-        ? ''
-        : `<li class="iz-tm-note">Eleme maçları lig bitince belli olur: ${state.settings.playoffEnabled ? "1. finale, 2. ve 3. playoff'a" : '1. ve 2. finale'}.</li>`;
+      let elim = '';
+      if (!T.leagueDone(state)) {
+        elim = T.hasFinal(state.settings)
+          ? `<li class="iz-tm-note">Eleme maçları lig bitince belli olur: ${T.hasPlayoff(state.settings) ? "1. finale, 2. ve 3. playoff'a" : '1. ve 2. finale'}.</li>`
+          : '<li class="iz-tm-note">Final yok: ligi birinci bitiren şampiyon olur.</li>';
+      }
 
       const live = liveMatch();
       const next = mine.find((m) => m.status === 'pending');
@@ -980,6 +1125,7 @@
     return {
       team,
       player,
+      match,
       liveMatch,
       nextMatch,
       findStage,
@@ -992,6 +1138,8 @@
       teamName,
       lastResult,
       championData,
+      awaitingChampion,
+      renderMatchSummary,
       renderStandings,
       fixtureGroups,
       renderScreen,

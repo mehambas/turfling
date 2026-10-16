@@ -158,6 +158,27 @@ describe('maç sonu bildirimleri', () => {
     assert.deepEqual(resultNotices(state(fin()), state(fin({ status: 'done' }))), [{ title: 'Maç bitti', body: 'Kırmızılar 0–0 Maviler' }]);
   });
 
+  test('final yoksa ligin son maçı yerine şampiyon bildirilir; tam eşitlik kurayla çözülünce de', () => {
+    const settings = { leagueRounds: 1, finalEnabled: false };
+    const goal = (id, team) => ({ id, team });
+    const L1 = match({ id: 'L1', status: 'done', goals: [goal('a', 'A')] });
+    const L3 = (extra) => match({ id: 'L3', home: 'B', away: 'C', goals: [goal('c', 'B')], ...extra });
+    const league = (L2, last, extra = {}) => sampleState({ settings, matches: [L1, L2, last], ...extra });
+
+    const aWins = match({ id: 'L2', home: 'C', away: 'A', status: 'done', goals: [goal('b', 'A')] });
+    assert.deepEqual(resultNotices(league(aWins, L3()), league(aWins, L3({ status: 'done' }))), [
+      { title: 'Şampiyon: Kırmızılar', body: 'Ligi 6 puanla birinci bitirdi · Son maç: Maviler 1–0 Sarılar' },
+    ]);
+
+    const cWins = match({ id: 'L2', home: 'C', away: 'A', status: 'done', goals: [goal('b', 'C')] });
+    const tied = league(cWins, L3({ status: 'done' }));
+    assert.deepEqual(resultNotices(league(cWins, L3()), tied), [{ title: 'Maç bitti', body: 'Maviler 1–0 Sarılar' }]);
+    assert.deepEqual(resultNotices(tied, { ...tied, lots: { A: 0.9, B: 0.1, C: 0.5 } }), [{ title: 'Şampiyon: Maviler', body: 'Ligi 3 puanla birinci bitirdi' }]);
+
+    const withFinal = (last) => sampleState({ settings: { leagueRounds: 1 }, matches: [L1, aWins, last] });
+    assert.deepEqual(resultNotices(withFinal(L3()), withFinal(L3({ status: 'done' }))), [{ title: 'Maç bitti', body: 'Maviler 1–0 Sarılar' }]);
+  });
+
   test('yayının ilk hâli, iptal edilen ve sonradan düzeltilen maç bildirilmez', () => {
     assert.deepEqual(resultNotices(null, state(match({ status: 'done' }))), []);
     assert.deepEqual(resultNotices(state(match()), state(match({ status: 'pending' }))), []);

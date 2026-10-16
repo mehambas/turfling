@@ -1707,6 +1707,7 @@ p {
 }
 
 .fx-row {
+  position: relative;
   display: grid;
   grid-template-columns: 76px 64px minmax(0, 1fr) 104px minmax(0, 1fr) 128px;
   align-items: center;
@@ -1795,6 +1796,8 @@ p {
 }
 
 .fx-act {
+  position: relative;
+  z-index: 1;
   justify-self: end;
   display: flex;
   align-items: center;
@@ -1858,6 +1861,23 @@ p {
 
 .fx-row.is-live :focus-visible {
   outline-color: var(--lime);
+}
+
+.row-hit::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+button.fx-score,
+button.iz-fx-score {
+  border: 0;
+}
+
+.fx-row:has(> .row-hit):hover,
+.iz-fx-row:has(> .row-hit):hover {
+  background: var(--sunken);
 }
 
 .btn-live {
@@ -2536,6 +2556,11 @@ p {
 
 .box-hint {
   display: none;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.box-note {
   font-size: 12px;
   color: var(--ink-2);
 }
@@ -4096,6 +4121,7 @@ body.is-screen .live-bar {
 }
 
 .iz-fx-row {
+  position: relative;
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr) 58px minmax(0, 1fr);
   align-items: center;
@@ -4195,6 +4221,271 @@ body.is-screen .live-bar {
 .iz-fx-row .tag-live::before {
   width: 5px;
   height: 5px;
+}
+
+.iz-sheet-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 44px;
+  padding: 0 16px 0 8px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--field);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.iz-sheet-back svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ms {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ms-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+
+.ms .ms-kicker {
+  margin: 0;
+  font-family: var(--font-cond);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.ms-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.ms-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 16px 12px;
+  border-radius: 20px;
+  background: var(--sunken);
+}
+
+.ms-team {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.ms-tn {
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-family: var(--font-cond);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+button.ms-tn {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  transition: background-color 0.15s ease-out;
+}
+
+button.ms-tn:hover,
+button.ms-tn:active {
+  background: var(--field);
+}
+
+.ms-tn .sw {
+  width: 16px;
+  height: 16px;
+  margin: 6px 0;
+}
+
+.ms-tn .crest {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
+.ms-team.is-lose .ms-tn,
+.ms-team.is-tbd .ms-tn {
+  color: var(--ink-2);
+}
+
+.ms-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 16px;
+  font-family: var(--font-cond);
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ms-dash {
+  color: var(--faint);
+}
+
+.ms-scorers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ms-scorers li.is-unknown {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.ms-scorers .ms-min {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.ms .ms-pens,
+.ms .ms-outcome {
+  margin: -4px 0 0;
+  font-size: 14px;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.ms .ms-outcome {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ms .ms-h {
+  margin: 0 2px 4px;
+  font-family: var(--font-cond);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.ms-tl {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ms-ev {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border-top: 1px solid var(--ring);
+}
+
+.ms-ev:first-child {
+  border-top: 0;
+}
+
+.ms-ev-home,
+.ms-ev-away {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ms-ev-home {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.ms-who {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ms-ev.is-unknown .ms-who {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.ms-ev .ms-min {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.ms-ev-score {
+  justify-self: center;
+  min-width: 50px;
+  padding: 2px 8px;
+  border-radius: 9px;
+  background: var(--pitch-soft);
+  color: var(--pitch-ink);
+  font-family: var(--font-cond);
+  font-size: 17px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.ms-ev.is-home .ms-ev-score {
+  box-shadow: inset 3px 0 var(--team);
+}
+
+.ms-ev.is-away .ms-ev-score {
+  box-shadow: inset -3px 0 var(--team);
+}
+
+.ms-ev-score b {
+  font-weight: 800;
+}
+
+.ms .ms-none {
+  margin: 0 2px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.summary-dialog {
+  gap: 16px;
+}
+
+.is-wide .iz-sheet.is-match {
+  bottom: auto;
+  max-height: 92vh;
+  width: min(640px, calc(100vw - 32px));
 }
 
 .is-wide .iz-dialog::backdrop {

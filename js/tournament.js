@@ -15,6 +15,7 @@
     leagueRounds: 2,
     leagueMin: 12,
     playoffEnabled: true,
+    finalEnabled: true,
     playoffMin: 10,
     finalMin: 15,
     changeMin: 2,
@@ -163,8 +164,13 @@
     return matches;
   }
 
+  const hasFinal = (settings) => settings.finalEnabled !== false;
+  // Playoff finale çıkacak takımı belirler; final yoksa playoff da oynanmaz.
+  const hasPlayoff = (settings) => !!settings.playoffEnabled && hasFinal(settings);
+
   function activeMatches(state) {
-    return state.matches.filter((m) => m.stage !== 'playoff' || state.settings.playoffEnabled);
+    const s = state.settings;
+    return state.matches.filter((m) => (m.stage === 'playoff' ? hasPlayoff(s) : m.stage === 'final' ? hasFinal(s) : true));
   }
 
   function stageMinutes(settings, stage) {
@@ -347,7 +353,8 @@
     if (!leagueDone(state)) return [];
     const { rows, unresolved } = computeStandings(state, { includeLive: false });
     const pos = Object.fromEntries(rows.map((r, i) => [r.team, i]));
-    const cut = state.settings.playoffEnabled ? 1 : 2;
+    const s = state.settings;
+    const cut = hasPlayoff(s) || !hasFinal(s) ? 1 : 2;
     return unresolved.filter((group) => {
       const idx = group.map((id) => pos[id]);
       return Math.min(...idx) < cut && Math.max(...idx) >= cut;
@@ -369,7 +376,7 @@
       return;
     }
     const order = computeStandings(state, { includeLive: false }).rows.map((r) => r.team);
-    if (state.settings.playoffEnabled) {
+    if (hasPlayoff(state.settings)) {
       setTeams(po, order[1], order[2]);
       setTeams(fin, order[0], winnerOf(po));
     } else {
@@ -378,6 +385,10 @@
   }
 
   function champion(state) {
+    if (!hasFinal(state.settings)) {
+      if (!leagueDone(state) || blockingTies(state).length) return null;
+      return computeStandings(state, { includeLive: false }).rows[0].team;
+    }
     const fin = state.matches.find((m) => m.stage === 'final');
     return fin ? winnerOf(fin) : null;
   }
@@ -491,7 +502,8 @@
 
   function playTimeRange(settings) {
     const league = settings.leagueRounds * 2 * settings.leagueMin;
-    if (!settings.playoffEnabled) return [league, league + settings.finalMin];
+    if (!hasFinal(settings)) return [league, league];
+    if (!hasPlayoff(settings)) return [league, league + settings.finalMin];
     return [
       league + Math.min(settings.playoffMin, settings.finalMin),
       league + settings.playoffMin + settings.finalMin,
@@ -513,6 +525,8 @@
     drawTeams,
     applyDraw,
     generateMatches,
+    hasFinal,
+    hasPlayoff,
     activeMatches,
     matchMinutes,
     elapsedMs,

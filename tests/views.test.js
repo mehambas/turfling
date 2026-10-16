@@ -266,7 +266,8 @@ test('fikstür ve puan penceresi: puan durumu, gol krallığı, fikstür; deği�
   assert.match(closed, /iz-fx-row is-live">\s*<span class="iz-fx-time"><span class="tag-live">Canlı<\/span>/);
   assert.match(closed, /Lig 2\.si/);
   assert.doesNotMatch(closed, /~/);
-  assert.deepEqual([...actionsIn(closed)].sort(), ['rules-toggle', 'scorers-toggle', 'sheet-close']);
+  assert.deepEqual([...actionsIn(closed)].sort(), ['match', 'rules-toggle', 'scorers-toggle', 'sheet-close']);
+  assert.match(closed, new RegExp(`<button class="iz-fx-score row-hit" data-action="match" data-match="${first.id}"`));
 
   const open = V.renderSheet({ scorersOpen: true });
   assert.match(open, /aria-expanded="true"/);
@@ -394,7 +395,7 @@ test('takım sayfası: sıra ve puan, gol atmayanlar dahil oyuncular, maçlar G/
   assert.equal((html.match(/class="iz-pl-name"/g) || []).length, winner.playerIds.length);
   assert.match(html, /Gol kralı/);
   assert.match(html, /<b class="is-zero">0<\/b>/);
-  assert.match(html, /<span class="iz-tm-score">2–1<\/span><span class="iz-res is-g"/);
+  assert.match(html, /<button class="iz-tm-score row-hit" data-action="match" data-match="L1" aria-label="1\. maç özeti: [^"]+">2–1<\/button><span class="iz-res is-g"/);
   assert.match(html, /Eleme maçları lig bitince belli olur/);
   assert.match(html, /Sıradaki maç · tahmini başlama/);
   assert.equal(viewer(s).renderTeamPage('yok'), '');
@@ -453,6 +454,112 @@ test('izleyici: bildirim zili yalnız istenince ve durumuyla görünür, TV ekra
   assert.match(V.renderWatch({ bell: 'on' }), /<button class="iz-bell is-on" data-action="push-toggle" aria-pressed="true"/);
   assert.doesNotMatch(V.renderWatch({ wide: true, bell: 'on' }), /push-toggle/);
   assert.doesNotMatch(viewer(null).renderWatch({ bell: 'on' }), /push-toggle/);
+});
+
+test('final kapalı: kural metni, puan notu, takım sayfası notu; fikstürde yalnız lig', () => {
+  const r = Views.rulesText({ ...T.createState().settings, finalEnabled: false });
+  assert.equal(r.summary, 'Lig');
+  assert.deepEqual(r.steps.map((x) => x.who), ['Herkes herkesle iki kez oynar, 1.si şampiyon']);
+  assert.equal(r.draw, 'Öyle kalır, iki takım da 1 puan alır.');
+  assert.match(r.tvLine, /Final yok, lig 1\.si şampiyon$/);
+
+  const s = setup();
+  s.settings.finalEnabled = false;
+  const V = viewer(s);
+  const fx = V.renderFixturePage();
+  assert.deepEqual([...fx.matchAll(/<h2 class="iz-card-h">([^<]+)</g)].map((m) => m[1]), ['Lig · 1. devre', 'Lig · 2. devre']);
+  assert.match(fx, /6 maç · tahmini bitiş/);
+  assert.match(fx, /<span class="iz-step-name">Lig<svg/, 'kupa tek adımda, ligde');
+  assert.match(V.renderStandingsPage(), /1\. şampiyon olur/);
+  assert.match(V.renderTeamPage('A'), /Final yok: ligi birinci bitiren şampiyon olur/);
+});
+
+test('final kapalı: lig bitince 1. şampiyon gösterilir; tam eşitlikte şampiyon beklenir', () => {
+  const s = setup();
+  s.settings.finalEnabled = false;
+  const now = Date.now();
+  for (const m of s.matches.filter((x) => x.stage === 'league')) {
+    T.startMatch(s, m, now - 20 * MIN);
+    const winner = m.home === 'A' || m.away === 'A' ? 'A' : 'B';
+    goal(m, m.home === winner ? 'home' : 'away', s, 1, now);
+    T.finishMatch(m, null, now - 10 * MIN);
+  }
+  T.resolveKnockouts(s);
+  assert.equal(T.champion(s), 'A');
+  const V = viewer(s);
+  const html = V.renderWatch();
+  assert.match(html, /Turnuva bitti/);
+  assert.match(html, /<p class="iz-hero-sub">Ligi 12 puanla birinci bitirdi<\/p>/);
+  assert.match(V.renderWatch({ wide: true }), /<span class="tv-sub">Ligi 12 puanla birinci bitirdi<\/span>/);
+  assert.match(V.renderTeamPage('A'), /<strong class="iz-nx-big">Şampiyon<\/strong>/);
+  assert.match(V.renderTeamPage('B'), /<strong class="iz-nx-big">Lig 2\.si<\/strong><span class="iz-nx-sub">6 puan<\/span>/);
+
+  const t = T.createState();
+  T.addPlayers(t, Array.from({ length: 15 }, (_, i) => `Oyuncu ${i + 1}`));
+  T.applyDraw(t, seeded(1));
+  Object.assign(t.settings, { leagueRounds: 1, finalEnabled: false });
+  t.matches = T.generateMatches(t.settings);
+  t.started = true;
+  for (const m of t.matches.filter((x) => x.stage === 'league')) {
+    T.startMatch(t, m, now - 20 * MIN);
+    goal(m, 'home', t, 1, now);
+    T.finishMatch(m, null, now - 10 * MIN);
+  }
+  assert.equal(T.champion(t), null);
+  assert.match(viewer(t).renderWatch(), /Lig bitti[\s\S]*Şampiyon belirleniyor/);
+  assert.match(viewer(t).renderWatch({ wide: true }), /Şampiyon belirleniyor/);
+});
+
+test('maç özeti: golcüler dakikalarıyla, gol sırası ara skorla, sonuç; takım adları takım sayfasını açar', () => {
+  const s = setup();
+  const now = Date.now();
+  const m = playFirst(s, now);
+  const V = viewer(s);
+  const html = V.renderMatchSummary(m.id, { links: true });
+  const home = playerName(s, m, 'home');
+  const away = playerName(s, m, 'away');
+  assert.match(html, /<h2 class="ms-kicker">1\. maç · Lig 1\. devre<\/h2>/);
+  assert.match(html, /\d\d:\d\d – \d\d:\d\d · 12 dk/);
+  assert.match(html, new RegExp(`<li>${home} <span class="ms-min">3', 8'</span></li>`));
+  assert.match(html, new RegExp(`<li>${away} <span class="ms-min">6'</span></li>`));
+  const runs = [...html.matchAll(/<span class="ms-ev-score">(.*?)<\/span>/g)].map((x) => x[1]);
+  assert.deepEqual(runs, ['<b>1</b>–0', '1–<b>1</b>', '<b>2</b>–1']);
+  assert.match(html, new RegExp(`<p class="ms-outcome">${s.teams.find((t) => t.id === m.home).name} kazandı</p>`));
+  assert.equal((html.match(/data-action="team"/g) || []).length, 2);
+  assert.doesNotMatch(V.renderMatchSummary(m.id), /data-action/);
+  assert.equal(V.renderMatchSummary('yok'), '');
+
+  assert.match(V.renderWatch({ links: true }), new RegExp(`<button class="iz-last" data-action="match" data-match="${m.id}"`));
+  assert.match(V.renderWatch(), /<section class="iz-last" aria-label="Son maç">/);
+  assert.match(V.renderFixturePage(), new RegExp(`<button class="iz-fx-score row-hit" data-action="match" data-match="${m.id}"`));
+
+  const sheet = V.renderSheet({ matchId: m.id });
+  assert.match(sheet, /data-action="sheet-back"/);
+  assert.match(sheet, /<h2 class="ms-kicker" id="iz-sheet-title">/);
+  assert.match(V.renderSheet({ matchId: 'L6' }), /Fikstür ve puan/, 'oynanmamış maçın özeti açılmaz');
+});
+
+test('maç özeti: penaltı, bilinmeyen golcü, dakikasız gol sonda', () => {
+  const s = setup();
+  const now = Date.now();
+  const fin = s.matches.find((m) => m.stage === 'final');
+  Object.assign(fin, { home: 'A', away: 'B' });
+  T.startMatch(s, fin, now - 20 * MIN);
+  goal(fin, 'away', s, 9, now);
+  const unknown = T.addGoal(fin, 'A', now);
+  unknown.ms = 4 * MIN;
+  T.finishMatch(fin, { home: 3, away: 4 }, now - 2 * MIN);
+  T.addGoal(fin, 'B', now);
+  T.addGoal(fin, 'A', now);
+  T.finishMatch(fin, { home: 3, away: 4 }, now - 2 * MIN);
+  const html = viewer(s).renderMatchSummary(fin.id);
+  assert.match(html, /<h2 class="ms-kicker">Final<\/h2>/);
+  assert.match(html, /<p class="ms-pens">Penaltılar 3–4<\/p>/);
+  assert.match(html, new RegExp(`<p class="ms-outcome">${s.teams.find((t) => t.id === 'B').name} penaltılarla şampiyon oldu</p>`));
+  assert.match(html, /<li class="is-unknown">Bilinmiyor ×2 <span class="ms-min">5'<\/span><\/li>/);
+  const runs = [...html.matchAll(/<span class="ms-ev-score">(.*?)<\/span>/g)].map((x) => x[1]);
+  assert.deepEqual(runs, ['<b>1</b>–0', '1–<b>1</b>', '1–<b>2</b>', '<b>2</b>–2']);
+  assert.match(html, /<span class="ms-min">–<\/span>/);
 });
 
 test('kendi kalesine gol: listelerde (k.k.), golcünün sayısına girmez, takım sayfasında ayrı satır', () => {
